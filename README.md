@@ -1,66 +1,100 @@
-## Foundry
+# Interest Rate Swap (Hook) on Uniswap v4
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+This project is a prototype **Interest Rate Swap (IRS)** protocol built using **Uniswap v4 hooks**.  
+The system enables traders to take **fixed vs. floating exposure** on an index (e.g. ETH base rate).  
+Funding is accrued continuously and settled in **token1** through the Router.
 
-Foundry consists of:
+---
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## What is an IRS?
 
-## Documentation
+An **Interest Rate Swap** allows participants to exchange:
 
-https://book.getfoundry.sh/
+- **Fixed leg**: pays a predetermined fixed rate.  
+- **Floating leg**: pays or receives based on an evolving index (e.g. ETH staking yield).  
 
-## Usage
+In this design:
 
-### Build
+- Pools have a **maturity date**; swaps/adds are blocked after maturity.  
+- **Funding** accumulates over time as the difference between the pool’s implied fixed rate and the floating index.  
+- When positions are closed or settled, the funding owed is netted and paid in **token1**.  
 
-```shell
-$ forge build
-```
+---
 
-### Test
+## Unique Math
 
-```shell
-$ forge test
-```
+### 1. Exponential Weighted Index
 
-### Format
+The floating index is smoothed with EWMA to avoid noise:
 
-```shell
-$ forge fmt
-```
+$$
+I_t = I_{t-1} + \alpha\,(r_t - I_{t-1}), \qquad \alpha = \frac{\mathrm{alphaPPM}}{10^6}
+$$
 
-### Gas Snapshots
+- **Deviation clamp:** the raw observation $r_t$ is compared to the previous smoothed index $I_{t-1}$ and the change is clamped multiplicatively to ±`maxDeviationPPM` (parts-per-million) around $I_{t-1}$. Equivalently,
 
-```shell
-$ forge snapshot
-```
+$$
+ ilde r_t = \mathrm{clamp}\Big(r_t,\; I_{t-1}\cdot\big(1 - \tfrac{\mathrm{maxDeviationPPM}}{10^6}\big),\; I_{t-1}\cdot\big(1 + \tfrac{\mathrm{maxDeviationPPM}}{10^6}\big)\Big)
+$$
 
-### Anvil
+and then the EWMA update uses $\tilde r_t$ in place of $r_t$.
 
-```shell
-$ anvil
-```
+- **Staleness guard:** ignore updates older than `maxStale`.
 
-### Deploy
+---
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+### 2. Funding Rate
 
-### Cast
+The funding rate is the spread between floating index and pool-implied fixed:
 
-```shell
-$ cast <subcommand>
-```
+$$
+f_t = \mathrm{clamp}\big(I_t - R^{\mathrm{pool}}_t,\; \pm\,\mathrm{maxDeviationPPM}\big)
+$$
 
-### Help
+---
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+### 3. Funding Index Integration
+
+Funding is integrated over time to build a **cumulative index**:
+
+$$
+\Phi_t = \Phi_{t-1} + f_t\cdot\frac{\Delta t}{\mathrm{SECONDS\_PER\_YEAR}}
+$$
+
+Each position stores a snapshot $\Phi_{\mathrm{pos}}$, which is the value of the cumulative funding index $\Phi$ taken when the position was last created or updated; the position's funding owed is computed from the difference $\Phi_t - \Phi_{\mathrm{pos}}$.
+
+---
+
+### 4. Funding Owed Per Position
+
+For liquidity \(L\):
+
+$$
+\Delta\mathrm{owed}_{\mathrm{token1}} = (\Phi_t - \Phi_{\mathrm{pos}})\cdot L\cdot \kappa
+$$
+
+- Positive = trader receives token1  
+- Negative = trader pays token1  
+- $\kappa$ is a scaling factor from liquidity to notional.
+
+---
+
+### 5. Flash Accounting Settlement
+
+After a swap/add/remove, Uniswap v4 returns `BalanceDelta (d0, d1)`.  
+The Router enforces conservation:
+
+- If \(d_i < 0\): pay in token \(i\) (`sync → transferFrom → settle`)
+- If \(d_i > 0\): collect out token \(i\) (`take`)
+
+$$
+\sum\mathrm{pays} - \sum\mathrm{collects} = d_0 \oplus d_1
+$$
+
+This guarantees **no stranded credits**.
+
+---
+
+## License
+
+MIT

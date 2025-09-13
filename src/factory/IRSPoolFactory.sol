@@ -24,6 +24,9 @@ contract IRSPoolFactory {
         MANAGER = _manager;
     }
 
+    /// @notice Deploys the IRSHook deterministically via CREATE2 using `salt`,
+    ///         initializes the v4 pool, and sets maturity.
+    /// @dev    The low 14 bits of the hook address must encode the permissions.
     function createPool(
         Currency currency0,
         Currency currency1,
@@ -32,24 +35,9 @@ contract IRSPoolFactory {
         uint160 sqrtPriceX96,
         uint64 maturityTs,
         IEthBaseIndex baseIndex,
-        IMarginManager marginManager
+        IMarginManager marginManager,
+        bytes32 salt
     ) external returns (PoolId id, address hookAddr) {
-        uint160 flags = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG;
-
-        bytes memory ctorArgs = abi.encode(
-            MANAGER,
-            baseIndex,
-            marginManager,
-            address(this)
-        );
-
-        (address expectedHook, bytes32 salt) = HookMiner.find(
-            address(this), // deployer
-            flags, // desired low 14 bits
-            type(IRSHook).creationCode,
-            ctorArgs
-        );
-
         hookAddr = address(
             new IRSHook{salt: salt}(
                 MANAGER,
@@ -58,7 +46,17 @@ contract IRSPoolFactory {
                 address(this)
             )
         );
-        require(hookAddr == expectedHook, "HookAddrMismatch");
+
+        uint160 FLAGS = Hooks.AFTER_INITIALIZE_FLAG |
+            Hooks.BEFORE_SWAP_FLAG |
+            Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
+            Hooks.AFTER_ADD_LIQUIDITY_FLAG |
+            Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
+            Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+
+        // If ALL_HOOK_MASK is present in your v4 version, you can AND by it.
+        // We simply ensure our required bits are present; the manager will also enforce correctness.
+        require((uint160(hookAddr) & FLAGS) == FLAGS, "HookFlagsMismatch");
 
         PoolKey memory key = PoolKey({
             currency0: currency0,
@@ -74,5 +72,9 @@ contract IRSPoolFactory {
         IRSHook(hookAddr).setMaturity(id, maturityTs);
 
         emit PoolCreated(id, hookAddr, maturityTs);
+    }
+
+    function setRouter(address hookAddr, address router) external {
+        IRSHook(hookAddr).setRouter(router);
     }
 }

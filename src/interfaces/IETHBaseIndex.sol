@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity =0.8.26;
 
+/// @notice Interface for a simple per-second ETH APR index.
+/// Provides both instantaneous rate (1e18 scale) and cumulative integral
+/// for funding calculations in IRS hooks.
 interface IEthBaseIndex {
-    /// @notice per-second floating rate in 1e18 (e.g., 0.03 / YEAR)
+    /// @notice current floating rate per second (1e18 scale)
     function ratePerSecond() external view returns (uint256);
+
+    /// @notice timestamp used for last cumulative checkpoint
     function lastUpdate() external view returns (uint64);
 
-    /// @notice update the per-second rate; implementation should emit event
+    /// @notice governance/manual override for the per-second rate (see notes below)
     function setRatePerSecond(uint256 newRatePerSecond) external;
 
-    /// @notice returns cumulative index for funding calculations
-    /// simple integral approximation: cum += ratePerSecond * (now - last)
-    function cumulativeIndex() external view returns (uint256 cum, uint64 tstamp);
+    /// @notice cumulative integral of rate over time (1e18 * seconds)
+    function cumulativeIndex()
+        external
+        view
+        returns (uint256 cum, uint64 tstamp);
 }
