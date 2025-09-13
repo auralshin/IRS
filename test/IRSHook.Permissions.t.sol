@@ -12,63 +12,72 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {
-    BeforeSwapDelta, BeforeSwapDeltaLibrary
-} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-
-// NOTE: If your v4 core exposes Add/Remove structs differently, fix these two lines:
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import {IRSPoolFactory} from "../src/factory/IRSPoolFactory.sol";
 import {IRSHook} from "../src/hooks/IRSHook.sol";
 import {EthBaseIndex} from "../src/oracles/EthBaseIndex.sol";
-import {MarginManager} from "../src/risk/MarginManager.sol";
-import {IEthBaseIndex} from "../src/interfaces/IETHBaseIndex.sol";
-import {IMarginManager} from "../src/interfaces/IMarginManager.sol";
+import {IETHBaseIndex} from "../src/interfaces/IETHBaseIndex.sol";
+import {IRiskEngine} from "../src/interfaces/IRiskEngine.sol";
+import {RiskEngine} from "../src/risk/RiskEngine.sol";
 
 contract IRSHook_Permissions is Test {
     using PoolIdLibrary for PoolKey;
 
     IPoolManager manager;
     EthBaseIndex base;
-    MarginManager margin;
     IRSPoolFactory factory;
+    RiskEngine risk;
 
     address owner = address(0xa);
     address alice = address(0xA11CE);
     address bob = address(0xB0B);
 
-    function _computeAddress(address deployer, uint256 salt, bytes memory creationCodeWithArgs)
-        internal
-        pure
-        returns (address)
-    {
-        return address(
-            uint160(
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            bytes1(0xFF), deployer, salt, keccak256(creationCodeWithArgs)
+    // ---------- CREATE2 helpers ----------
+    function _computeAddress(
+        address deployer,
+        uint256 salt,
+        bytes memory creationCodeWithArgs
+    ) internal pure returns (address) {
+        return
+            address(
+                uint160(
+                    uint256(
+                        keccak256(
+                            abi.encodePacked(
+                                bytes1(0xFF),
+                                deployer,
+                                salt,
+                                keccak256(creationCodeWithArgs)
+                            )
                         )
                     )
                 )
-            )
-        );
+            );
     }
 
     function _findSalt(address deployer) internal view returns (bytes32) {
         bytes memory creation = type(IRSHook).creationCode;
+
+        // constructor(IPoolManager, IEthBaseIndex, IRiskEngine, address factory)
         bytes memory args = abi.encode(
-            manager, IEthBaseIndex(address(base)), IMarginManager(address(margin)), address(factory)
+            manager,
+            IETHBaseIndex(address(base)),
+            IRiskEngine(address(risk)),
+            address(factory)
         );
         bytes memory creationWithArgs = abi.encodePacked(creation, args);
 
-        uint160 want = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
-            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG
-            | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+        uint160 want = (Hooks.AFTER_INITIALIZE_FLAG |
+            Hooks.BEFORE_SWAP_FLAG |
+            Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
+            Hooks.AFTER_ADD_LIQUIDITY_FLAG |
+            Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
+            Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
         uint160 mask = Hooks.ALL_HOOK_MASK;
 
-        for (uint256 s = 1; s < 50000; ++s) {
+        for (uint256 s = 1; s < 50_000; ++s) {
             address a = _computeAddress(deployer, s, creationWithArgs);
             if ((uint160(a) & mask) == want && a.code.length == 0) {
                 return bytes32(s);
@@ -88,14 +97,19 @@ contract IRSHook_Permissions is Test {
             3600, // maxStale
             sources
         );
-        margin = new MarginManager(address(this));
-        factory = new IRSPoolFactory(manager);
 
-        margin.setWhitelisted(alice, true);
-        margin.setWhitelisted(bob, false);
+        // Risk engine (Ownable from OZ v5 — pass initial owner)
+        risk = new RiskEngine(owner);
+        vm.prank(owner);
+        risk.setOperator(address(this), true); // allow test to call onFundingAccrued
+
+        factory = new IRSPoolFactory(manager);
     }
 
-    function _createPool() internal returns (PoolKey memory key, PoolId id, address hook) {
+    function _createPool()
+        internal
+        returns (PoolKey memory key, PoolId id, address hook)
+    {
         Currency c0 = Currency.wrap(address(0xC001));
         Currency c1 = Currency.wrap(address(0xC002));
 
@@ -108,64 +122,82 @@ contract IRSHook_Permissions is Test {
             60,
             79228162514264337593543950336, // sqrtPriceX96=1
             uint64(block.timestamp + 30 days),
-            IEthBaseIndex(address(base)),
-            IMarginManager(address(margin)),
+            IETHBaseIndex(address(base)),
+            IRiskEngine(address(risk)),
             salt
         );
 
-        key =
-            PoolKey({currency0: c0, currency1: c1, fee: 3000, tickSpacing: 60, hooks: IHooks(hook)});
+        key = PoolKey({
+            currency0: c0,
+            currency1: c1,
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(hook)
+        });
+
+        // Configure router address on hook for sender-as-router gate in tests
+        vm.prank(address(factory));
+        IRSHook(hook).setRouter(address(this));
     }
 
+    // ---- Permissions & flags ----
+
     function test_FlagsIncludeAddRemoveHooks() public {
-        (,, address hookAddr) = _createPool();
+        (, , address hookAddr) = _createPool();
 
         uint160 mask = Hooks.ALL_HOOK_MASK;
-        uint160 want = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
-            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG
-            | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+        uint160 want = (Hooks.AFTER_INITIALIZE_FLAG |
+            Hooks.BEFORE_SWAP_FLAG |
+            Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
+            Hooks.AFTER_ADD_LIQUIDITY_FLAG |
+            Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
+            Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
 
         uint160 flags = uint160(hookAddr) & mask;
         assertEq(flags, want, "hook LSB flags must include add/remove");
     }
 
-    function test_MarginGate_UsesSender_WhitelistedOK() public {
-        (PoolKey memory key,, address hookAddr) = _createPool();
+    function test_RiskGate_UsesSender_Address() public {
+        (PoolKey memory key, , address hookAddr) = _createPool();
 
-        vm.startPrank(address(manager), alice);
-        SwapParams memory sp =
-            SwapParams({zeroForOne: true, amountSpecified: 1, sqrtPriceLimitX96: 0});
+        // Make bob unhealthy; alice remains healthy (no positions → IM=0)
+        risk.onFundingAccrued(bob, int256(1e18));
 
-        (bytes4 sel, BeforeSwapDelta d, uint24 optFee) =
-            IRSHook(hookAddr).beforeSwap(alice, key, sp, "");
+        // As manager calling beforeSwap with ROUTER as sender, alice as trader (healthy)
+        vm.startPrank(address(manager), address(this));
+        SwapParams memory sp = SwapParams({
+            zeroForOne: true,
+            amountSpecified: 1,
+            sqrtPriceLimitX96: 0
+        });
+        (bytes4 sel, BeforeSwapDelta d, uint24 optFee) = IRSHook(hookAddr)
+            .beforeSwap(address(this), key, sp, abi.encode(alice));
         vm.stopPrank();
 
         assertEq(sel, IHooks.beforeSwap.selector);
         assertEq(
-            BeforeSwapDelta.unwrap(d), BeforeSwapDelta.unwrap(BeforeSwapDeltaLibrary.ZERO_DELTA)
+            BeforeSwapDelta.unwrap(d),
+            BeforeSwapDelta.unwrap(BeforeSwapDeltaLibrary.ZERO_DELTA)
         );
         assertEq(optFee, 0);
-    }
 
-    function test_MarginGate_BlocksNonWhitelisted() public {
-        (PoolKey memory key,, address hookAddr) = _createPool();
-
-        vm.startPrank(address(manager), bob);
-        SwapParams memory sp =
-            SwapParams({zeroForOne: true, amountSpecified: 1, sqrtPriceLimitX96: 0});
-
-        // IMPORTANT: sender param is used, not tx.origin
-        vm.expectRevert(bytes("MarginNotHealthy"));
-        IRSHook(hookAddr).beforeSwap(bob, key, sp, "");
+        // Now pass bob (unhealthy) → must revert
+        vm.startPrank(address(manager), address(this));
+        vm.expectRevert(bytes("margin: insufficient equity"));
+        IRSHook(hookAddr).beforeSwap(address(this), key, sp, abi.encode(bob));
         vm.stopPrank();
     }
 
     function test_AfterInitialize_Selector() public {
-        (PoolKey memory key,, address hookAddr) = _createPool();
+        (PoolKey memory key, , address hookAddr) = _createPool();
 
         vm.prank(address(manager));
-        bytes4 sel =
-            IRSHook(hookAddr).afterInitialize(address(this), key, 79228162514264337593543950336, 0);
+        bytes4 sel = IRSHook(hookAddr).afterInitialize(
+            address(this),
+            key,
+            79228162514264337593543950336,
+            0
+        );
         assertEq(sel, IHooks.afterInitialize.selector);
     }
 
@@ -179,8 +211,7 @@ contract IRSHook_Permissions is Test {
         vm.prank(address(factory));
         IRSHook(hookAddr).setMaturity(id, uint64(block.timestamp - 1)); // already matured
 
-        // After maturity, beforeAddLiquidity must revert with PoolMatured
-        vm.prank(address(manager)); // callbacks always from manager
+        vm.prank(address(manager));
         ModifyLiquidityParams memory ap = ModifyLiquidityParams({
             tickLower: -60,
             tickUpper: 60,
@@ -189,6 +220,11 @@ contract IRSHook_Permissions is Test {
         });
 
         vm.expectRevert(bytes("PoolMatured"));
-        IRSHook(hookAddr).beforeAddLiquidity(alice, key, ap, "");
+        IRSHook(hookAddr).beforeAddLiquidity(
+            address(this),
+            key,
+            ap,
+            abi.encode(alice)
+        );
     }
 }

@@ -13,8 +13,8 @@ import {
     BeforeSwapDelta, BeforeSwapDeltaLibrary
 } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
-import {IEthBaseIndex} from "../interfaces/IETHBaseIndex.sol";
-import {IMarginManager} from "../interfaces/IMarginManager.sol";
+import {IRiskEngine} from "../interfaces/IRiskEngine.sol";
+import {IETHBaseIndex} from "../interfaces/IETHBaseIndex.sol";
 
 /// @notice IRS v4 Hook with funding accrual, maturity gating, and position accounting.
 /// @dev Per-pool "fundingGrowthGlobalX128" accrues from ETH Base Index deltas / totalLiquidity.
@@ -36,8 +36,9 @@ contract IRSHook is IHooks {
 
     // --- Immutables ---
     IPoolManager public immutable MANAGER;
-    IEthBaseIndex public immutable BASE_INDEX;
-    IMarginManager public immutable MARGIN;
+    IETHBaseIndex public immutable BASE_INDEX;
+    IRiskEngine public immutable RISK;
+    // Removed MARGIN
     address public immutable FACTORY;
 
     // Fixed-point scale (like feeGrowth global): 2^128
@@ -64,6 +65,7 @@ contract IRSHook is IHooks {
 
     // positions keyed by (owner, ticks, salt, poolId)
     mapping(bytes32 => Position) public positions;
+
     // Minimal API to observe funding owed
 
     function fundingOwedToken1(
@@ -92,16 +94,10 @@ contract IRSHook is IHooks {
         emit FundingOwedCleared(owner, key.toId(), lower, upper, amt);
     }
 
-    // --- Constructor ---
-    constructor(
-        IPoolManager _manager,
-        IEthBaseIndex _base,
-        IMarginManager _margin,
-        address _factory
-    ) {
+    constructor(IPoolManager _manager, IETHBaseIndex _base, IRiskEngine _risk, address _factory) {
         MANAGER = _manager;
         BASE_INDEX = _base;
-        MARGIN = _margin;
+        RISK = _risk;
         FACTORY = _factory;
     }
 
@@ -180,7 +176,7 @@ contract IRSHook is IHooks {
         }
     }
 
-    /// @dev Update a position's funding owed to "now" using current global growth.
+    /// @dev Update a position's funding owed to "now" using current global growth and push delta into RiskEngine.
     function _updatePositionOwed(
         address owner,
         PoolId id,
@@ -204,6 +200,10 @@ contract IRSHook is IHooks {
             int256 delta = int256((growthDelta * p.liquidity) / FP);
             p.fundingOwedToken1 += delta;
             p.fundingGrowthSnapshotX128 = pm.fundingGrowthGlobalX128;
+
+            // Push to RiskEngine with liability sign convention:
+            // user credit (delta > 0) reduces liability => send negative to RiskEngine
+            RISK.onFundingAccrued(owner, -delta);
         }
     }
 
@@ -259,8 +259,6 @@ contract IRSHook is IHooks {
         p.fundingOwedToken1 = 0;
     }
 
-    // ============ IHooks ============
-
     function beforeInitialize(address, PoolKey calldata, uint160)
         external
         pure
@@ -284,14 +282,21 @@ contract IRSHook is IHooks {
         address sender,
         PoolKey calldata key,
         ModifyLiquidityParams calldata params,
-        bytes calldata
+        bytes calldata hookData
     ) external override returns (bytes4) {
         require(msg.sender == address(MANAGER), "NotManager");
+        require(sender == ROUTER, "UseRouter");
+        address trader = abi.decode(hookData, (address));
+
         PoolId id = key.toId();
         // update funding and frozen flag from index before gating
         _accrue(id);
         require(!poolMeta[id].frozen, "PoolMatured");
-        _updatePositionOwed(sender, id, params.tickLower, params.tickUpper, params.salt);
+        _updatePositionOwed(trader, id, params.tickLower, params.tickUpper, params.salt);
+
+        // baseline IM guard
+        RISK.requireIM(trader, block.timestamp);
+
         // we apply delta in afterAddLiquidity when liquidity is actually adjusted
         return IHooks.beforeAddLiquidity.selector;
     }
@@ -302,13 +307,16 @@ contract IRSHook is IHooks {
         ModifyLiquidityParams calldata params,
         BalanceDelta,
         BalanceDelta,
-        bytes calldata
+        bytes calldata hookData
     ) external override returns (bytes4, BalanceDelta) {
         require(msg.sender == address(MANAGER), "NotManager");
+        require(sender == ROUTER, "UseRouter");
+        address trader = abi.decode(hookData, (address));
+
         PoolId id = key.toId();
         // apply positive or zero delta
         _applyLiquidityDelta(
-            sender, id, params.tickLower, params.tickUpper, params.salt, params.liquidityDelta
+            trader, id, params.tickLower, params.tickUpper, params.salt, params.liquidityDelta
         );
         return (IHooks.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
@@ -317,12 +325,15 @@ contract IRSHook is IHooks {
         address sender,
         PoolKey calldata key,
         ModifyLiquidityParams calldata params,
-        bytes calldata
+        bytes calldata hookData
     ) external override returns (bytes4) {
         require(msg.sender == address(MANAGER), "NotManager");
+        require(sender == ROUTER, "UseRouter");
+        address trader = abi.decode(hookData, (address));
+
         PoolId id = key.toId();
         _accrue(id);
-        _updatePositionOwed(sender, id, params.tickLower, params.tickUpper, params.salt);
+        _updatePositionOwed(trader, id, params.tickLower, params.tickUpper, params.salt);
         // delta applied in afterRemove
         return IHooks.beforeRemoveLiquidity.selector;
     }
@@ -333,29 +344,37 @@ contract IRSHook is IHooks {
         ModifyLiquidityParams calldata params,
         BalanceDelta,
         BalanceDelta,
-        bytes calldata
+        bytes calldata hookData
     ) external override returns (bytes4, BalanceDelta) {
         require(msg.sender == address(MANAGER), "NotManager");
+        require(sender == ROUTER, "UseRouter");
+        address trader = abi.decode(hookData, (address));
+
         PoolId id = key.toId();
         // apply negative or zero delta
         _applyLiquidityDelta(
-            sender, id, params.tickLower, params.tickUpper, params.salt, params.liquidityDelta
+            trader, id, params.tickLower, params.tickUpper, params.salt, params.liquidityDelta
         );
         return (IHooks.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
-    function beforeSwap(address sender, PoolKey calldata key, SwapParams calldata, bytes calldata)
-        external
-        override
-        returns (bytes4, BeforeSwapDelta, uint24)
-    {
+    function beforeSwap(
+        address sender,
+        PoolKey calldata key,
+        SwapParams calldata,
+        bytes calldata hookData
+    ) external override returns (bytes4, BeforeSwapDelta, uint24) {
         require(msg.sender == address(MANAGER), "NotManager");
-        require(MARGIN.isHealthy(sender), "MarginNotHealthy");
+        require(sender == ROUTER, "UseRouter");
+        address trader = abi.decode(hookData, (address));
 
         PoolId id = key.toId();
         // accrue first to update frozen flag if maturity passed, then gate
         _accrue(id);
         require(!poolMeta[id].frozen, "PoolMatured");
+
+        // margin/risk guard on the real trader
+        RISK.requireIM(trader, block.timestamp);
 
         return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }

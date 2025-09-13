@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {IEthBaseIndex} from "../interfaces/IETHBaseIndex.sol";
-import {IMarginManager} from "../interfaces/IMarginManager.sol";
+import {IETHBaseIndex} from "../interfaces/IETHBaseIndex.sol";
+import {IRiskEngine} from "../interfaces/IRiskEngine.sol";
 import {IRSHook} from "../hooks/IRSHook.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -33,13 +33,12 @@ contract IRSPoolFactory {
         int24 tickSpacing,
         uint160 sqrtPriceX96,
         uint64 maturityTs,
-        IEthBaseIndex baseIndex,
-        IMarginManager marginManager,
+        IETHBaseIndex baseIndex,
+        IRiskEngine riskEngine,
         bytes32 salt
     ) external returns (PoolId id, address hookAddr) {
         require(salt != bytes32(0), "SaltRequired");
-        hookAddr =
-            address(new IRSHook{salt: salt}(MANAGER, baseIndex, marginManager, address(this)));
+        hookAddr = address(new IRSHook{salt: salt}(MANAGER, baseIndex, riskEngine, address(this)));
 
         uint160 FLAGS = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
             | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG

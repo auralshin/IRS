@@ -18,11 +18,11 @@ import {EthBaseIndex} from "../src/oracles/EthBaseIndex.sol";
 import {IRSPoolFactory} from "../src/factory/IRSPoolFactory.sol";
 import {IRSLiquidityCaps} from "../src/risk/IRSLiquidityCaps.sol";
 import {IRSV4Router} from "../src/periphery/IRSV4Router.sol";
-import {MarginManager} from "../src/risk/MarginManager.sol";
 import {IWETH9} from "../src/interfaces/IWETH.sol";
 
-import {IEthBaseIndex} from "../src/interfaces/IETHBaseIndex.sol";
-import {IMarginManager} from "../src/interfaces/IMarginManager.sol";
+import {IETHBaseIndex} from "../src/interfaces/IETHBaseIndex.sol";
+import {IRiskEngine} from "../src/interfaces/IRiskEngine.sol";
+import {RiskEngine} from "../src/risk/RiskEngine.sol";
 
 contract DeployAll is Script {
     using Strings for uint256;
@@ -50,18 +50,28 @@ contract DeployAll is Script {
         pm = _envAddressOrZero("POOL_MANAGER");
         if (pm != address(0)) return pm;
 
-        string memory cidKey = string.concat("POOL_MANAGER_", block.chainid.toString());
+        string memory cidKey = string.concat(
+            "POOL_MANAGER_",
+            block.chainid.toString()
+        );
         pm = _envAddressOrZero(cidKey);
         if (pm != address(0)) return pm;
 
         if (block.chainid == 1) pm = _envAddressOrZero("POOL_MANAGER_MAINNET");
-        else if (block.chainid == 11155111) pm = _envAddressOrZero("POOL_MANAGER_SEPOLIA");
-        else if (block.chainid == 8453) pm = _envAddressOrZero("POOL_MANAGER_BASE");
-        else if (block.chainid == 84532) pm = _envAddressOrZero("POOL_MANAGER_BASE_SEPOLIA");
-        else if (block.chainid == 42161) pm = _envAddressOrZero("POOL_MANAGER_ARBITRUM");
-        else if (block.chainid == 421614) pm = _envAddressOrZero("POOL_MANAGER_ARBITRUM_SEPOLIA");
-        else if (block.chainid == 10) pm = _envAddressOrZero("POOL_MANAGER_OPTIMISM");
-        else if (block.chainid == 137) pm = _envAddressOrZero("POOL_MANAGER_POLYGON");
+        else if (block.chainid == 11155111)
+            pm = _envAddressOrZero("POOL_MANAGER_SEPOLIA");
+        else if (block.chainid == 8453)
+            pm = _envAddressOrZero("POOL_MANAGER_BASE");
+        else if (block.chainid == 84532)
+            pm = _envAddressOrZero("POOL_MANAGER_BASE_SEPOLIA");
+        else if (block.chainid == 42161)
+            pm = _envAddressOrZero("POOL_MANAGER_ARBITRUM");
+        else if (block.chainid == 421614)
+            pm = _envAddressOrZero("POOL_MANAGER_ARBITRUM_SEPOLIA");
+        else if (block.chainid == 10)
+            pm = _envAddressOrZero("POOL_MANAGER_OPTIMISM");
+        else if (block.chainid == 137)
+            pm = _envAddressOrZero("POOL_MANAGER_POLYGON");
 
         require(
             pm != address(0),
@@ -74,11 +84,10 @@ contract DeployAll is Script {
         );
     }
 
-    function _sort(address a, address b)
-        internal
-        pure
-        returns (address c0, address c1, bool flipped)
-    {
+    function _sort(
+        address a,
+        address b
+    ) internal pure returns (address c0, address c1, bool flipped) {
         require(a != address(0) && b != address(0), "ZERO_TOKEN");
         require(a != b, "TOKENS_EQUAL");
         if (a < b) return (a, b, false);
@@ -91,39 +100,41 @@ contract DeployAll is Script {
         return uint160((Q96 * Q96) / sp);
     }
 
-    // ---------- CREATE2 mining helpers (off-chain, inside the script) ----------
-    function _initCodeHash(address manager, address baseIndex, address marginMgr, address factory)
-        internal
-        pure
-        returns (bytes32)
-    {
+    // ---------- CREATE2 mining helpers ----------
+    function _initCodeHash(
+        address manager,
+        address baseIndex,
+        address riskEngine,
+        address factory
+    ) internal pure returns (bytes32) {
+        // IRSHook constructor: (IPoolManager, IEthBaseIndex, IRiskEngine, address factory)
         bytes memory init = abi.encodePacked(
-            type(IRSHook).creationCode, abi.encode(manager, baseIndex, marginMgr, factory)
+            type(IRSHook).creationCode,
+            abi.encode(manager, baseIndex, riskEngine, factory)
         );
         return keccak256(init);
     }
 
-    function _mine(bytes32 initCodeHash, address deployer)
-        internal
-        pure
-        returns (bytes32 salt, address predicted)
-    {
-        // Required hook flags your IRSHook advertises via address low 14 bits
-        uint160 FLAGS = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
-            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG
-            | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+    function _mine(
+        bytes32 initCodeHash,
+        address deployer
+    ) internal pure returns (bytes32 salt, address predicted) {
+        // Required flags advertised via low bits of the hook address
+        uint160 FLAGS = Hooks.AFTER_INITIALIZE_FLAG |
+            Hooks.BEFORE_SWAP_FLAG |
+            Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
+            Hooks.AFTER_ADD_LIQUIDITY_FLAG |
+            Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
+            Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
 
         unchecked {
-            for (uint256 i = 0;; ++i) {
+            for (uint256 i = 1; ; ++i) {
                 bytes32 s = bytes32(i);
-                // CREATE2: address = keccak256(0xff, deployer, salt, initCodeHash)[12:]
-                bytes32 h = keccak256(abi.encodePacked(bytes1(0xff), deployer, s, initCodeHash));
+                bytes32 h = keccak256(
+                    abi.encodePacked(bytes1(0xff), deployer, s, initCodeHash)
+                );
                 address a = address(uint160(uint256(h)));
-
-                // Ensure our required bits are present. (Manager will also validate.)
-                if ((uint160(a) & FLAGS) == FLAGS) {
-                    return (s, a);
-                }
+                if ((uint160(a) & FLAGS) == FLAGS) return (s, a);
             }
         }
     }
@@ -137,51 +148,62 @@ contract DeployAll is Script {
         address token1Env = _envAddress("TOKEN1");
         address uiWallet = _envAddress("UI_WALLET");
 
-        uint64 maturity = uint64(vm.envUint("MATURITY")); // epoch seconds (future)
-        uint24 fee = uint24(vm.envUint("FEE")); // e.g., 3000
-        int24 tickSpacing = int24(uint24(vm.envUint("TICK_SPACING"))); // e.g., 60
-        uint160 sqrtPriceX96 = uint160(vm.envUint("SQRT_PRICE_X96")); // e.g., 2**96 for 1.0
+        uint64 maturity = uint64(vm.envUint("MATURITY")); // seconds since epoch
+        uint24 fee = uint24(vm.envUint("FEE")); // e.g. 3000
+        int24 tickSpacing = int24(uint24(vm.envUint("TICK_SPACING"))); // e.g. 60
+        uint160 sqrtPriceX96 = uint160(vm.envUint("SQRT_PRICE_X96")); // e.g. 2**96 for 1.0
 
         require(maturity > block.timestamp, "BAD_MATURITY");
         require(sqrtPriceX96 != 0, "BAD_SQRT_PRICE");
 
-        // Sort for v4 key (and optionally invert price if env was in TOKEN0/TOKEN1 order)
-        (address c0Addr, address c1Addr, bool flipped) = _sort(token0Env, token1Env);
-        // If your starting price ≠ 1.0 and you set it in env for (token0Env/token1Env) order,
-        // uncomment the next line to preserve the same price after flip.
+        // sort for v4 key (and optionally invert price if you provided non-1 price)
+        (address c0Addr, address c1Addr, bool flipped) = _sort(
+            token0Env,
+            token1Env
+        );
         // if (flipped) { sqrtPriceX96 = _invertSqrtPriceX96(sqrtPriceX96); }
 
-        // ---------- 1) Deploy contracts on-chain ----------
         vm.startBroadcast();
 
         IPoolManager manager = IPoolManager(pmAddr);
 
-        // Core IRS stack
+        // Core IRS stack (permissionless risk)
         EthBaseIndex base = new EthBaseIndex(
             msg.sender, // admin
             200_000, // alphaPPM (0.2 EMA)
             200_000, // maxDeviationPPM (±20%)
             1 hours, // maxStale
-            new address[](0) // initialSources
+            new address[](0) // initialSources (empty for demo)
         );
-        MarginManager margin = new MarginManager(msg.sender);
+        RiskEngine risk = new RiskEngine(msg.sender);
         IRSPoolFactory factory = new IRSPoolFactory(manager);
 
         // Periphery for demo/UI
         IRSLiquidityCaps caps = new IRSLiquidityCaps(msg.sender);
-        IRSV4Router router = new IRSV4Router(manager, IWETH9(wethAddr), caps, msg.sender);
+        IRSV4Router router = new IRSV4Router(
+            manager,
+            IWETH9(wethAddr),
+            caps,
+            msg.sender
+        );
 
         vm.stopBroadcast();
 
-        // ---------- 2) Mine CREATE2 salt off-chain (in this script) ----------
-        bytes32 initHash =
-            _initCodeHash(address(manager), address(base), address(margin), address(factory));
-        (bytes32 salt, address predictedHook) = _mine(initHash, address(factory));
-
+        // ---------- mine salt off-chain (inside this script execution) ----------
+        bytes32 initHash = _initCodeHash(
+            address(manager),
+            address(base),
+            address(risk),
+            address(factory)
+        );
+        (bytes32 salt, address predictedHook) = _mine(
+            initHash,
+            address(factory)
+        );
         console2.log("Mined salt:        ", vm.toString(salt));
         console2.log("Predicted hook:    ", predictedHook);
 
-        // ---------- 3) Create pool cheaply with the mined salt ----------
+        // ---------- create pool with mined salt ----------
         vm.startBroadcast();
 
         (PoolId id, address hook) = factory.createPool(
@@ -191,15 +213,15 @@ contract DeployAll is Script {
             tickSpacing,
             sqrtPriceX96,
             maturity,
-            IEthBaseIndex(address(base)),
-            IMarginManager(address(margin)),
-            salt // <-- mined salt
+            IETHBaseIndex(address(base)),
+            IRiskEngine(address(risk)),
+            salt
         );
 
-        // Optional wiring (if applicable in your codebase)
+        // Optional: wire router if your factory/hook expects it
         // factory.setRouter(hook, address(router));
 
-        // Enable UI wallet and set caps
+        // Demo caps for UI wallet
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(c0Addr),
             currency1: Currency.wrap(c1Addr),
@@ -209,7 +231,6 @@ contract DeployAll is Script {
         });
         caps.setLP(uiWallet, true);
         caps.setCap(key.toId(), type(uint128).max);
-        margin.setWhitelisted(uiWallet, true);
 
         vm.stopBroadcast();
 
@@ -235,8 +256,8 @@ contract DeployAll is Script {
 
         console2.log("Index");
         console2.log(address(base));
-        console2.log("MarginManager");
-        console2.log(address(margin));
+        console2.log("RiskEngine");
+        console2.log(address(risk));
         console2.log("IRSPoolFactory");
         console2.log(address(factory));
         console2.log("IRSLiquidityCaps");

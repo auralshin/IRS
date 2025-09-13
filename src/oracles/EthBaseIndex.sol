@@ -2,7 +2,7 @@
 pragma solidity =0.8.26;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IEthBaseIndex} from "../interfaces/IETHBaseIndex.sol";
+import {IETHBaseIndex} from "../interfaces/IETHBaseIndex.sol";
 import {IRateSource} from "../interfaces/IRateSource.sol";
 
 /// -----------------------------------------------------------------------
@@ -18,7 +18,7 @@ import {IRateSource} from "../interfaces/IRateSource.sol";
 /// @dev Implements IEthBaseIndex to stay drop-in compatible with your hook.
 ///      `setRatePerSecond` acts as a governance/manual override (and clears when disabled).
 /// -----------------------------------------------------------------------
-contract EthBaseIndex is IEthBaseIndex, Ownable {
+contract EthBaseIndex is IETHBaseIndex, Ownable {
     address public controller; // IRSController
 
     modifier onlyAuthorized() {
@@ -33,7 +33,7 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
     uint256 private constant ONE_PPM = 1_000_000; // parts-per-million
 
     // -------------------- storage: public API --------------------
-    /// @inheritdoc IEthBaseIndex
+    /// @inheritdoc IETHBaseIndex
     uint64 public override lastUpdate; // last checkpoint timestamp
     /// @notice EMA-smoothed effective rate per second (1e18)
     uint256 public override ratePerSecond; // current effective rate
@@ -104,7 +104,7 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
         controller = c;
     }
 
-    /// @inheritdoc IEthBaseIndex
+    /// @inheritdoc IETHBaseIndex
     function setRatePerSecond(uint256 newRatePerSecond) external override onlyOwner {
         // This function acts as a *manual override* control.
         // - If you intend to enable manual, call setManualRate(newRatePerSecond, true).
@@ -120,7 +120,7 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
         emit Updated(ratePerSecondEffective(), cumulative, lastUpdate);
     }
 
-    /// @inheritdoc IEthBaseIndex
+    /// @inheritdoc IETHBaseIndex
     function cumulativeIndex() external view override returns (uint256 cum, uint64 tstamp) {
         uint64 nowTs = uint64(block.timestamp);
         uint64 dt = nowTs - lastUpdate;
