@@ -13,7 +13,7 @@ import {
     BeforeSwapDelta, BeforeSwapDeltaLibrary
 } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
-import {IEthBaseIndex} from "../interfaces/IEthBaseIndex.sol";
+import {IEthBaseIndex} from "../interfaces/IETHBaseIndex.sol";
 import {IMarginManager} from "../interfaces/IMarginManager.sol";
 
 /// @notice IRS v4 Hook with funding accrual, maturity gating, and position accounting.

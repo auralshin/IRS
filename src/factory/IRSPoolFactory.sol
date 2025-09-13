@@ -2,8 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
-import {IEthBaseIndex} from "../interfaces/IEthBaseIndex.sol";
+import {IEthBaseIndex} from "../interfaces/IETHBaseIndex.sol";
 import {IMarginManager} from "../interfaces/IMarginManager.sol";
 import {IRSHook} from "../hooks/IRSHook.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -38,6 +37,7 @@ contract IRSPoolFactory {
         IMarginManager marginManager,
         bytes32 salt
     ) external returns (PoolId id, address hookAddr) {
+    require(salt != bytes32(0), "SaltRequired");
         hookAddr =
             address(new IRSHook{salt: salt}(MANAGER, baseIndex, marginManager, address(this)));
 
@@ -45,8 +45,6 @@ contract IRSPoolFactory {
             | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG
             | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
 
-        // If ALL_HOOK_MASK is present in your v4 version, you can AND by it.
-        // We simply ensure our required bits are present; the manager will also enforce correctness.
         require((uint160(hookAddr) & FLAGS) == FLAGS, "HookFlagsMismatch");
 
         PoolKey memory key = PoolKey({

@@ -23,7 +23,7 @@ import {IRSPoolFactory} from "../src/factory/IRSPoolFactory.sol";
 import {IRSHook} from "../src/hooks/IRSHook.sol";
 import {EthBaseIndex} from "../src/oracles/EthBaseIndex.sol";
 import {MarginManager} from "../src/risk/MarginManager.sol";
-import {IEthBaseIndex} from "../src/interfaces/IEthBaseIndex.sol";
+import {IEthBaseIndex} from "../src/interfaces/IETHBaseIndex.sol";
 import {IMarginManager} from "../src/interfaces/IMarginManager.sol";
 
 contract IRSHook_Permissions is Test {
@@ -37,6 +37,35 @@ contract IRSHook_Permissions is Test {
     address owner = address(0xa);
     address alice = address(0xA11CE);
     address bob = address(0xB0B);
+
+    function _computeAddress(address deployer, uint256 salt, bytes memory creationCodeWithArgs)
+        internal
+        pure
+        returns (address)
+    {
+        return address(
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xFF), deployer, salt, keccak256(creationCodeWithArgs)))))
+        );
+    }
+
+    function _findSalt(address deployer) internal view returns (bytes32) {
+        bytes memory creation = type(IRSHook).creationCode;
+        bytes memory args = abi.encode(manager, IEthBaseIndex(address(base)), IMarginManager(address(margin)), address(factory));
+        bytes memory creationWithArgs = abi.encodePacked(creation, args);
+
+        uint160 want = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
+            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG
+            | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+        uint160 mask = Hooks.ALL_HOOK_MASK;
+
+        for (uint256 s = 1; s < 50000; ++s) {
+            address a = _computeAddress(deployer, s, creationWithArgs);
+            if ((uint160(a) & mask) == want && a.code.length == 0) {
+                return bytes32(s);
+            }
+        }
+        revert("could not find salt");
+    }
 
     function setUp() public {
         manager = new PoolManager(owner);
@@ -60,6 +89,8 @@ contract IRSHook_Permissions is Test {
         Currency c0 = Currency.wrap(address(0xC001));
         Currency c1 = Currency.wrap(address(0xC002));
 
+    bytes32 salt = _findSalt(address(factory));
+
         (id, hook) = factory.createPool(
             c0,
             c1,
@@ -69,7 +100,7 @@ contract IRSHook_Permissions is Test {
             uint64(block.timestamp + 30 days),
             IEthBaseIndex(address(base)),
             IMarginManager(address(margin)),
-            bytes32(0)
+            salt
         );
 
         key =

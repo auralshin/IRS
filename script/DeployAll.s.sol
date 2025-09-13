@@ -21,7 +21,7 @@ import {IRSV4Router} from "../src/periphery/IRSV4Router.sol";
 import {MarginManager} from "../src/risk/MarginManager.sol";
 import {IWETH9} from "../src/interfaces/IWETH.sol";
 
-import {IEthBaseIndex} from "../src/interfaces/IEthBaseIndex.sol";
+import {IEthBaseIndex} from "../src/interfaces/IETHBaseIndex.sol";
 import {IMarginManager} from "../src/interfaces/IMarginManager.sol";
 
 contract DeployAll is Script {
