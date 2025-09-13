@@ -58,7 +58,7 @@ $$
 Funding is integrated over time to build a **cumulative index**:
 
 $$
-\Phi_t = \Phi_{t-1} + f_t\cdot\frac{\Delta t}{\mathrm{SECONDS\_PER\_YEAR}}
+\Phi_{t} = \Phi_{t-1} + f_{t}\,\frac{\Delta t}{T_{\mathrm{year}}}
 $$
 
 Each position stores a snapshot $\Phi_{\mathrm{pos}}$, which is the value of the cumulative funding index $\Phi$ taken when the position was last created or updated; the position's funding owed is computed from the difference $\Phi_t - \Phi_{\mathrm{pos}}$.
