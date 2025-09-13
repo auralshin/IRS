@@ -66,7 +66,8 @@ contract IRSHookTest is Test {
             79228162514264337593543950336, // sqrtPriceX96 = 1.0
             uint64(block.timestamp + 30 days),
             IEthBaseIndex(address(base)),
-            IMarginManager(address(margin))
+            IMarginManager(address(margin)),
+            bytes32(0)
         );
 
         key =
