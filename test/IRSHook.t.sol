@@ -42,14 +42,24 @@ contract IRSHookTest is Test {
         returns (address)
     {
         return address(
-            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xFF), deployer, salt, keccak256(creationCodeWithArgs)))))
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xFF), deployer, salt, keccak256(creationCodeWithArgs)
+                        )
+                    )
+                )
+            )
         );
     }
 
     // Find a salt that results in a hook address with the desired bottom bits (flags)
     function _findSalt(address deployer) internal view returns (bytes32) {
         bytes memory creation = type(IRSHook).creationCode;
-        bytes memory args = abi.encode(manager, IEthBaseIndex(address(base)), IMarginManager(address(margin)), address(factory));
+        bytes memory args = abi.encode(
+            manager, IEthBaseIndex(address(base)), IMarginManager(address(margin)), address(factory)
+        );
         bytes memory creationWithArgs = abi.encodePacked(creation, args);
 
         uint160 want = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
@@ -90,7 +100,7 @@ contract IRSHookTest is Test {
         Currency c1 = Currency.wrap(address(0xC002));
 
         // Find a salt off-chain equivalent inside test using computeAddress loop
-    bytes32 salt = _findSalt(address(factory));
+        bytes32 salt = _findSalt(address(factory));
 
         (id, hook) = factory.createPool(
             c0,

@@ -44,13 +44,23 @@ contract IRSHook_Permissions is Test {
         returns (address)
     {
         return address(
-            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xFF), deployer, salt, keccak256(creationCodeWithArgs)))))
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xFF), deployer, salt, keccak256(creationCodeWithArgs)
+                        )
+                    )
+                )
+            )
         );
     }
 
     function _findSalt(address deployer) internal view returns (bytes32) {
         bytes memory creation = type(IRSHook).creationCode;
-        bytes memory args = abi.encode(manager, IEthBaseIndex(address(base)), IMarginManager(address(margin)), address(factory));
+        bytes memory args = abi.encode(
+            manager, IEthBaseIndex(address(base)), IMarginManager(address(margin)), address(factory)
+        );
         bytes memory creationWithArgs = abi.encodePacked(creation, args);
 
         uint160 want = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
@@ -89,7 +99,7 @@ contract IRSHook_Permissions is Test {
         Currency c0 = Currency.wrap(address(0xC001));
         Currency c1 = Currency.wrap(address(0xC002));
 
-    bytes32 salt = _findSalt(address(factory));
+        bytes32 salt = _findSalt(address(factory));
 
         (id, hook) = factory.createPool(
             c0,

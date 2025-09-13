@@ -37,7 +37,7 @@ contract IRSPoolFactory {
         IMarginManager marginManager,
         bytes32 salt
     ) external returns (PoolId id, address hookAddr) {
-    require(salt != bytes32(0), "SaltRequired");
+        require(salt != bytes32(0), "SaltRequired");
         hookAddr =
             address(new IRSHook{salt: salt}(MANAGER, baseIndex, marginManager, address(this)));
 
