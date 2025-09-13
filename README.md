@@ -34,10 +34,10 @@ $$
 - **Deviation clamp:** the raw observation $r_t$ is compared to the previous smoothed index $I_{t-1}$ and the change is clamped multiplicatively to ±`maxDeviationPPM` (parts-per-million) around $I_{t-1}$. Equivalently,
 
 $$
- ilde r_t = \mathrm{clamp}\Big(r_t,\; I_{t-1}\cdot\big(1 - \tfrac{\mathrm{maxDeviationPPM}}{10^6}\big),\; I_{t-1}\cdot\big(1 + \tfrac{\mathrm{maxDeviationPPM}}{10^6}\big)\Big)
+\tilde{r}_{t} = \mathrm{clamp}\Big(r_t,\; I_{t-1}\cdot\big(1 - \tfrac{\mathrm{maxDeviationPPM}}{10^6}\big),\; I_{t-1}\cdot\big(1 + \tfrac{\mathrm{maxDeviationPPM}}{10^6}\big)\Big)
 $$
 
-and then the EWMA update uses $\tilde r_t$ in place of $r_t$.
+and then the EWMA update uses $\tilde{r}_{t}$ in place of $r_t$.
 
 - **Staleness guard:** ignore updates older than `maxStale`.
 
@@ -48,7 +48,7 @@ and then the EWMA update uses $\tilde r_t$ in place of $r_t$.
 The funding rate is the spread between floating index and pool-implied fixed:
 
 $$
-f_t = \mathrm{clamp}\big(I_t - R^{\mathrm{pool}}_t,\; \pm\,\mathrm{maxDeviationPPM}\big)
+f_t = \mathrm{clamp}\big(I_t - R^{\mathrm{pool}}_{t},\; \pm\,\mathrm{maxDeviationPPM}\big)
 $$
 
 ---
@@ -91,10 +91,10 @@ $$
 \sum\mathrm{pays} - \sum\mathrm{collects} = d_0 \oplus d_1
 $$
 
-This guarantees **no stranded credits**.
+This guarantees **no stranded credits**
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE)
