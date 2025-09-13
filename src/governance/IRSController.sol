@@ -49,26 +49,21 @@ contract IRSController is AccessControl, Pausable {
         idx.setParams(alphaPPM, maxDeviationPPM, maxStale);
     }
 
-    function setOracleFreeze(
-        EthBaseIndex idx,
-        bool frozen
-    ) external onlyRole(ORACLE_ADMIN) {
+    function setOracleFreeze(EthBaseIndex idx, bool frozen) external onlyRole(ORACLE_ADMIN) {
         idx.setFreeze(frozen);
     }
 
-    function setOracleManual(
-        EthBaseIndex idx,
-        uint256 ratePerSecond,
-        bool enable
-    ) external onlyRole(ORACLE_ADMIN) {
+    function setOracleManual(EthBaseIndex idx, uint256 ratePerSecond, bool enable)
+        external
+        onlyRole(ORACLE_ADMIN)
+    {
         idx.setManualRate(ratePerSecond, enable);
     }
 
-    function setMaturity(
-        IRSHook hook,
-        PoolKey calldata key,
-        uint64 maturityTs
-    ) external onlyRole(RISK_ADMIN) {
+    function setMaturity(IRSHook hook, PoolKey calldata key, uint64 maturityTs)
+        external
+        onlyRole(RISK_ADMIN)
+    {
         hook.setMaturity(key.toId(), maturityTs);
         emit MaturitySet(key.toId(), maturityTs);
     }

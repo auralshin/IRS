@@ -5,7 +5,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {BalanceDelta, BalanceDeltaLibrary, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {
+    BalanceDelta,
+    BalanceDeltaLibrary,
+    toBalanceDelta
+} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -22,6 +26,7 @@ contract ManagerHarness is IPoolManager {
         uint256 amount;
         bool isNative;
     }
+
     struct Taken {
         address to;
         address token;
@@ -47,13 +52,30 @@ contract ManagerHarness is IPoolManager {
     }
 
     // Small reader helpers used by tests
-    function settlesLength() external view returns (uint256) { return settles.length; }
-    function takesLength() external view returns (uint256) { return takes.length; }
-    function settlesAt(uint256 i) external view returns (address who, address token, uint256 amount, bool isNative) {
-        Settled memory s = settles[i]; return (s.who, s.token, s.amount, s.isNative);
+    function settlesLength() external view returns (uint256) {
+        return settles.length;
     }
-    function takesAt(uint256 i) external view returns (address to, address token, uint256 amount, bool isNative) {
-        Taken memory t = takes[i]; return (t.to, t.token, t.amount, t.isNative);
+
+    function takesLength() external view returns (uint256) {
+        return takes.length;
+    }
+
+    function settlesAt(uint256 i)
+        external
+        view
+        returns (address who, address token, uint256 amount, bool isNative)
+    {
+        Settled memory s = settles[i];
+        return (s.who, s.token, s.amount, s.isNative);
+    }
+
+    function takesAt(uint256 i)
+        external
+        view
+        returns (address to, address token, uint256 amount, bool isNative)
+    {
+        Taken memory t = takes[i];
+        return (t.to, t.token, t.amount, t.isNative);
     }
 
     // ------------------------------
@@ -61,49 +83,45 @@ contract ManagerHarness is IPoolManager {
     // ------------------------------
 
     // NOTE: Must use *memory* for key/params to match the interface, and add `override`.
-    function swap(
-        PoolKey memory,
-        SwapParams memory,
-        bytes calldata
-    ) external view override returns (BalanceDelta) {
+    function swap(PoolKey memory, SwapParams memory, bytes calldata)
+        external
+        view
+        override
+        returns (BalanceDelta)
+    {
         return _nextSwapDelta;
     }
 
-    function modifyLiquidity(
-        PoolKey memory,
-        ModifyLiquidityParams memory,
-        bytes calldata
-    ) external view override returns (BalanceDelta, BalanceDelta) {
-    // Return the two programmed deltas separately so caller and fees accrue
-    // are preserved for settlement in the router (matches v4 semantics).
-    return (_nextModD0, _nextModD1);
+    function modifyLiquidity(PoolKey memory, ModifyLiquidityParams memory, bytes calldata)
+        external
+        view
+        override
+        returns (BalanceDelta, BalanceDelta)
+    {
+        // Return the two programmed deltas separately so caller and fees accrue
+        // are preserved for settlement in the router (matches v4 semantics).
+        return (_nextModD0, _nextModD1);
     }
 
-    function initialize(
-        PoolKey memory,
-        uint160
-    ) external pure override returns (int24) {
+    function initialize(PoolKey memory, uint160) external pure override returns (int24) {
         return 0;
     }
 
-    function unlock(
-        bytes calldata data
-    ) external override returns (bytes memory) {
+    function unlock(bytes calldata data) external override returns (bytes memory) {
         // Forward to the caller's unlockCallback (the router) so the router can
         // perform its internal op (modifyLiquidity / swap) and return encoded deltas.
-        (bool ok, bytes memory out) = msg.sender.call(
-            abi.encodeWithSelector(IUnlockCallback.unlockCallback.selector, data)
-        );
+        (bool ok, bytes memory out) =
+            msg.sender.call(abi.encodeWithSelector(IUnlockCallback.unlockCallback.selector, data));
         require(ok, "unlockCallback failed");
         return out;
     }
 
-    function donate(
-        PoolKey memory,
-        uint256,
-        uint256,
-        bytes calldata
-    ) external pure override returns (BalanceDelta) {
+    function donate(PoolKey memory, uint256, uint256, bytes calldata)
+        external
+        pure
+        override
+        returns (BalanceDelta)
+    {
         return BalanceDelta.wrap(0);
     }
 
@@ -136,7 +154,7 @@ contract ManagerHarness is IPoolManager {
             // update last seen
             _lastBalance[t] = nowBal;
         }
-        settles.push(Settled({ who: msg.sender, token: t, amount: amt, isNative: isNative }));
+        settles.push(Settled({who: msg.sender, token: t, amount: amt, isNative: isNative}));
     }
 
     // Matches PoolManager.take(Currency,address,uint256) signature.
@@ -144,12 +162,12 @@ contract ManagerHarness is IPoolManager {
         address t = Currency.unwrap(currency);
         bool isNative = (t == address(0));
         if (isNative) {
-            (bool ok, ) = payable(to).call{value: amount}("");
+            (bool ok,) = payable(to).call{value: amount}("");
             require(ok, "native take fail");
         } else {
             require(IERC20(t).transfer(to, amount), "erc20 take fail");
         }
-        takes.push(Taken({ to: to, token: t, amount: amount, isNative: isNative }));
+        takes.push(Taken({to: to, token: t, amount: amount, isNative: isNative}));
     }
 
     // --- convenience ---
@@ -166,50 +184,32 @@ contract ManagerHarness is IPoolManager {
 
     function burn(address, uint256, uint256) external override {}
 
-    function balanceOf(
-        address,
-        uint256
-    ) external pure override returns (uint256) {
+    function balanceOf(address, uint256) external pure override returns (uint256) {
         return 0;
     }
 
-    function allowance(
-        address,
-        address,
-        uint256
-    ) external pure override returns (uint256) {
+    function allowance(address, address, uint256) external pure override returns (uint256) {
         return 0;
     }
 
-    function approve(
-        address,
-        uint256,
-        uint256
-    ) external pure override returns (bool) {
+    function approve(address, uint256, uint256) external pure override returns (bool) {
         return true;
     }
 
-    function transfer(
-        address,
-        uint256,
-        uint256
-    ) external pure override returns (bool) {
+    function transfer(address, uint256, uint256) external pure override returns (bool) {
         return true;
     }
 
-    function transferFrom(
-        address,
-        address,
-        uint256,
-        uint256
-    ) external pure override returns (bool) {
+    function transferFrom(address, address, uint256, uint256)
+        external
+        pure
+        override
+        returns (bool)
+    {
         return true;
     }
 
-    function isOperator(
-        address,
-        address
-    ) external pure override returns (bool) {
+    function isOperator(address, address) external pure override returns (bool) {
         return false;
     }
 
@@ -217,17 +217,16 @@ contract ManagerHarness is IPoolManager {
         return true;
     }
 
-    function protocolFeesAccrued(
-        Currency
-    ) external pure override returns (uint256) {
+    function protocolFeesAccrued(Currency) external pure override returns (uint256) {
         return 0;
     }
 
-    function collectProtocolFees(
-        address,
-        Currency,
-        uint256
-    ) external pure override returns (uint256) {
+    function collectProtocolFees(address, Currency, uint256)
+        external
+        pure
+        override
+        returns (uint256)
+    {
         return 0;
     }
 
@@ -249,16 +248,11 @@ contract ManagerHarness is IPoolManager {
         return bytes32(0);
     }
 
-    function extsload(
-        bytes32,
-        uint256
-    ) external pure override returns (bytes32[] memory) {
+    function extsload(bytes32, uint256) external pure override returns (bytes32[] memory) {
         return new bytes32[](0);
     }
 
-    function extsload(
-        bytes32[] calldata
-    ) external pure override returns (bytes32[] memory) {
+    function extsload(bytes32[] calldata) external pure override returns (bytes32[] memory) {
         return new bytes32[](0);
     }
 
@@ -266,9 +260,7 @@ contract ManagerHarness is IPoolManager {
         return bytes32(0);
     }
 
-    function exttload(
-        bytes32[] calldata
-    ) external pure override returns (bytes32[] memory) {
+    function exttload(bytes32[] calldata) external pure override returns (bytes32[] memory) {
         return new bytes32[](0);
     }
 
@@ -286,7 +278,7 @@ contract ManagerHarness is IPoolManager {
             amt = nowBal >= prev ? nowBal - prev : 0;
             _lastBalance[t] = nowBal;
         }
-        settles.push(Settled({ who: msg.sender, token: t, amount: amt, isNative: isNative }));
+        settles.push(Settled({who: msg.sender, token: t, amount: amt, isNative: isNative}));
         return amt;
     }
 

@@ -38,21 +38,12 @@ contract IRSPoolFactory {
         IMarginManager marginManager,
         bytes32 salt
     ) external returns (PoolId id, address hookAddr) {
-        hookAddr = address(
-            new IRSHook{salt: salt}(
-                MANAGER,
-                baseIndex,
-                marginManager,
-                address(this)
-            )
-        );
+        hookAddr =
+            address(new IRSHook{salt: salt}(MANAGER, baseIndex, marginManager, address(this)));
 
-        uint160 FLAGS = Hooks.AFTER_INITIALIZE_FLAG |
-            Hooks.BEFORE_SWAP_FLAG |
-            Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
-            Hooks.AFTER_ADD_LIQUIDITY_FLAG |
-            Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
-            Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+        uint160 FLAGS = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
+            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG
+            | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
 
         // If ALL_HOOK_MASK is present in your v4 version, you can AND by it.
         // We simply ensure our required bits are present; the manager will also enforce correctness.

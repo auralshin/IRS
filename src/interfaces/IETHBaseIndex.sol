@@ -15,8 +15,5 @@ interface IEthBaseIndex {
     function setRatePerSecond(uint256 newRatePerSecond) external;
 
     /// @notice cumulative integral of rate over time (1e18 * seconds)
-    function cumulativeIndex()
-        external
-        view
-        returns (uint256 cum, uint64 tstamp);
+    function cumulativeIndex() external view returns (uint256 cum, uint64 tstamp);
 }

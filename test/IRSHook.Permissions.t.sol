@@ -12,7 +12,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {
+    BeforeSwapDelta, BeforeSwapDeltaLibrary
+} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 // NOTE: If your v4 core exposes Add/Remove structs differently, fix these two lines:
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
@@ -34,7 +36,7 @@ contract IRSHook_Permissions is Test {
 
     address owner = address(0xa);
     address alice = address(0xA11CE);
-    address bob   = address(0xB0B);
+    address bob = address(0xB0B);
 
     function setUp() public {
         manager = new PoolManager(owner);
@@ -42,22 +44,19 @@ contract IRSHook_Permissions is Test {
         address[] memory sources = new address[](0);
         base = new EthBaseIndex(
             address(this), // admin
-            200_000,       // alphaPPM
-            200_000,       // maxDeviationPPM
-            3600,          // maxStale
+            200_000, // alphaPPM
+            200_000, // maxDeviationPPM
+            3600, // maxStale
             sources
         );
         margin = new MarginManager(address(this));
         factory = new IRSPoolFactory(manager);
 
         margin.setWhitelisted(alice, true);
-        margin.setWhitelisted(bob,   false);
+        margin.setWhitelisted(bob, false);
     }
 
-    function _createPool()
-        internal
-        returns (PoolKey memory key, PoolId id, address hook)
-    {
+    function _createPool() internal returns (PoolKey memory key, PoolId id, address hook) {
         Currency c0 = Currency.wrap(address(0xC001));
         Currency c1 = Currency.wrap(address(0xC002));
 
@@ -72,59 +71,46 @@ contract IRSHook_Permissions is Test {
             IMarginManager(address(margin))
         );
 
-        key = PoolKey({
-            currency0: c0,
-            currency1: c1,
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: IHooks(hook)
-        });
+        key =
+            PoolKey({currency0: c0, currency1: c1, fee: 3000, tickSpacing: 60, hooks: IHooks(hook)});
     }
 
     function test_FlagsIncludeAddRemoveHooks() public {
-        (, , address hookAddr) = _createPool();
+        (,, address hookAddr) = _createPool();
 
         uint160 mask = Hooks.ALL_HOOK_MASK;
-        uint160 want = Hooks.AFTER_INITIALIZE_FLAG |
-                       Hooks.BEFORE_SWAP_FLAG      |
-                       Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
-                       Hooks.AFTER_ADD_LIQUIDITY_FLAG  |
-                       Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
-                       Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+        uint160 want = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
+            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG
+            | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
 
         uint160 flags = uint160(hookAddr) & mask;
         assertEq(flags, want, "hook LSB flags must include add/remove");
     }
 
     function test_MarginGate_UsesSender_WhitelistedOK() public {
-        (PoolKey memory key, , address hookAddr) = _createPool();
+        (PoolKey memory key,, address hookAddr) = _createPool();
 
         vm.startPrank(address(manager), alice);
-        SwapParams memory sp = SwapParams({
-            zeroForOne: true,
-            amountSpecified: 1,
-            sqrtPriceLimitX96: 0
-        });
+        SwapParams memory sp =
+            SwapParams({zeroForOne: true, amountSpecified: 1, sqrtPriceLimitX96: 0});
 
         (bytes4 sel, BeforeSwapDelta d, uint24 optFee) =
             IRSHook(hookAddr).beforeSwap(alice, key, sp, "");
         vm.stopPrank();
 
         assertEq(sel, IHooks.beforeSwap.selector);
-        assertEq(BeforeSwapDelta.unwrap(d),
-                 BeforeSwapDelta.unwrap(BeforeSwapDeltaLibrary.ZERO_DELTA));
+        assertEq(
+            BeforeSwapDelta.unwrap(d), BeforeSwapDelta.unwrap(BeforeSwapDeltaLibrary.ZERO_DELTA)
+        );
         assertEq(optFee, 0);
     }
 
     function test_MarginGate_BlocksNonWhitelisted() public {
-        (PoolKey memory key, , address hookAddr) = _createPool();
+        (PoolKey memory key,, address hookAddr) = _createPool();
 
         vm.startPrank(address(manager), bob);
-        SwapParams memory sp = SwapParams({
-            zeroForOne: true,
-            amountSpecified: 1,
-            sqrtPriceLimitX96: 0
-        });
+        SwapParams memory sp =
+            SwapParams({zeroForOne: true, amountSpecified: 1, sqrtPriceLimitX96: 0});
 
         // IMPORTANT: sender param is used, not tx.origin
         vm.expectRevert(bytes("MarginNotHealthy"));
@@ -133,15 +119,11 @@ contract IRSHook_Permissions is Test {
     }
 
     function test_AfterInitialize_Selector() public {
-        (PoolKey memory key, , address hookAddr) = _createPool();
+        (PoolKey memory key,, address hookAddr) = _createPool();
 
         vm.prank(address(manager));
-        bytes4 sel = IRSHook(hookAddr).afterInitialize(
-            address(this),
-            key,
-            79228162514264337593543950336,
-            0
-        );
+        bytes4 sel =
+            IRSHook(hookAddr).afterInitialize(address(this), key, 79228162514264337593543950336, 0);
         assertEq(sel, IHooks.afterInitialize.selector);
     }
 

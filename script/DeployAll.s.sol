@@ -39,7 +39,11 @@ contract DeployAll is Script {
     }
 
     function _envAddressOrZero(string memory key) internal returns (address a) {
-        try vm.envAddress(key) returns (address v) { a = v; } catch { a = address(0); }
+        try vm.envAddress(key) returns (address v) {
+            a = v;
+        } catch {
+            a = address(0);
+        }
     }
 
     function _resolvePoolManager() internal returns (address pm) {
@@ -59,13 +63,22 @@ contract DeployAll is Script {
         else if (block.chainid == 10) pm = _envAddressOrZero("POOL_MANAGER_OPTIMISM");
         else if (block.chainid == 137) pm = _envAddressOrZero("POOL_MANAGER_POLYGON");
 
-        require(pm != address(0), string.concat(
-            "PoolManager not set. Provide POOL_MANAGER or ",
-            cidKey, " (or a network alias env var). chainId=", block.chainid.toString()
-        ));
+        require(
+            pm != address(0),
+            string.concat(
+                "PoolManager not set. Provide POOL_MANAGER or ",
+                cidKey,
+                " (or a network alias env var). chainId=",
+                block.chainid.toString()
+            )
+        );
     }
 
-    function _sort(address a, address b) internal pure returns (address c0, address c1, bool flipped) {
+    function _sort(address a, address b)
+        internal
+        pure
+        returns (address c0, address c1, bool flipped)
+    {
         require(a != address(0) && b != address(0), "ZERO_TOKEN");
         require(a != b, "TOKENS_EQUAL");
         if (a < b) return (a, b, false);
@@ -79,15 +92,13 @@ contract DeployAll is Script {
     }
 
     // ---------- CREATE2 mining helpers (off-chain, inside the script) ----------
-    function _initCodeHash(
-        address manager,
-        address baseIndex,
-        address marginMgr,
-        address factory
-    ) internal pure returns (bytes32) {
+    function _initCodeHash(address manager, address baseIndex, address marginMgr, address factory)
+        internal
+        pure
+        returns (bytes32)
+    {
         bytes memory init = abi.encodePacked(
-            type(IRSHook).creationCode,
-            abi.encode(manager, baseIndex, marginMgr, factory)
+            type(IRSHook).creationCode, abi.encode(manager, baseIndex, marginMgr, factory)
         );
         return keccak256(init);
     }
@@ -98,20 +109,16 @@ contract DeployAll is Script {
         returns (bytes32 salt, address predicted)
     {
         // Required hook flags your IRSHook advertises via address low 14 bits
-        uint160 FLAGS =
-            Hooks.AFTER_INITIALIZE_FLAG |
-            Hooks.BEFORE_SWAP_FLAG |
-            Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
-            Hooks.AFTER_ADD_LIQUIDITY_FLAG |
-            Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
-            Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+        uint160 FLAGS = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
+            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG
+            | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
 
         unchecked {
-            for (uint256 i = 0; ; ++i) {
+            for (uint256 i = 0;; ++i) {
                 bytes32 s = bytes32(i);
                 // CREATE2: address = keccak256(0xff, deployer, salt, initCodeHash)[12:]
                 bytes32 h = keccak256(abi.encodePacked(bytes1(0xff), deployer, s, initCodeHash));
-                address a = address(uint160(uint(h)));
+                address a = address(uint160(uint256(h)));
 
                 // Ensure our required bits are present. (Manager will also validate.)
                 if ((uint160(a) & FLAGS) == FLAGS) {
@@ -124,16 +131,16 @@ contract DeployAll is Script {
     // ---------- deploy ----------
     function run() external {
         // ------- env -------
-        address pmAddr      = _resolvePoolManager();
-        address wethAddr    = _envAddress("WETH");
-        address token0Env   = _envAddress("TOKEN0");
-        address token1Env   = _envAddress("TOKEN1");
-        address uiWallet    = _envAddress("UI_WALLET");
+        address pmAddr = _resolvePoolManager();
+        address wethAddr = _envAddress("WETH");
+        address token0Env = _envAddress("TOKEN0");
+        address token1Env = _envAddress("TOKEN1");
+        address uiWallet = _envAddress("UI_WALLET");
 
-        uint64  maturity      = uint64(vm.envUint("MATURITY"));          // epoch seconds (future)
-        uint24  fee           = uint24(vm.envUint("FEE"));               // e.g., 3000
-        int24   tickSpacing   = int24(uint24(vm.envUint("TICK_SPACING"))); // e.g., 60
-        uint160 sqrtPriceX96  = uint160(vm.envUint("SQRT_PRICE_X96"));   // e.g., 2**96 for 1.0
+        uint64 maturity = uint64(vm.envUint("MATURITY")); // epoch seconds (future)
+        uint24 fee = uint24(vm.envUint("FEE")); // e.g., 3000
+        int24 tickSpacing = int24(uint24(vm.envUint("TICK_SPACING"))); // e.g., 60
+        uint160 sqrtPriceX96 = uint160(vm.envUint("SQRT_PRICE_X96")); // e.g., 2**96 for 1.0
 
         require(maturity > block.timestamp, "BAD_MATURITY");
         require(sqrtPriceX96 != 0, "BAD_SQRT_PRICE");
@@ -151,10 +158,10 @@ contract DeployAll is Script {
 
         // Core IRS stack
         EthBaseIndex base = new EthBaseIndex(
-            msg.sender,   // admin
-            200_000,      // alphaPPM (0.2 EMA)
-            200_000,      // maxDeviationPPM (±20%)
-            1 hours,      // maxStale
+            msg.sender, // admin
+            200_000, // alphaPPM (0.2 EMA)
+            200_000, // maxDeviationPPM (±20%)
+            1 hours, // maxStale
             new address[](0) // initialSources
         );
         MarginManager margin = new MarginManager(msg.sender);
@@ -167,7 +174,8 @@ contract DeployAll is Script {
         vm.stopBroadcast();
 
         // ---------- 2) Mine CREATE2 salt off-chain (in this script) ----------
-        bytes32 initHash = _initCodeHash(address(manager), address(base), address(margin), address(factory));
+        bytes32 initHash =
+            _initCodeHash(address(manager), address(base), address(margin), address(factory));
         (bytes32 salt, address predictedHook) = _mine(initHash, address(factory));
 
         console2.log("Mined salt:        ", vm.toString(salt));
@@ -207,25 +215,42 @@ contract DeployAll is Script {
 
         // ------- logs for the UI -------
         console2.log("=== IRS v4 Deployment ===");
-        console2.log("chainId");        console2.log(block.chainid);
-        console2.log("PoolManager");    console2.log(pmAddr);
-        console2.log("WETH");           console2.log(wethAddr);
+        console2.log("chainId");
+        console2.log(block.chainid);
+        console2.log("PoolManager");
+        console2.log(pmAddr);
+        console2.log("WETH");
+        console2.log(wethAddr);
 
-        console2.log("Env TOKEN0");     console2.log(token0Env);
-        console2.log("Env TOKEN1");     console2.log(token1Env);
-        console2.log("Pool currency0"); console2.log(c0Addr);
-        console2.log("Pool currency1"); console2.log(c1Addr);
-        console2.log("flipped (env->pool)"); console2.log(flipped);
+        console2.log("Env TOKEN0");
+        console2.log(token0Env);
+        console2.log("Env TOKEN1");
+        console2.log(token1Env);
+        console2.log("Pool currency0");
+        console2.log(c0Addr);
+        console2.log("Pool currency1");
+        console2.log(c1Addr);
+        console2.log("flipped (env->pool)");
+        console2.log(flipped);
 
-        console2.log("Index");          console2.log(address(base));
-        console2.log("MarginManager");  console2.log(address(margin));
-        console2.log("IRSPoolFactory"); console2.log(address(factory));
-        console2.log("IRSLiquidityCaps"); console2.log(address(caps));
-        console2.log("IRSV4Router");    console2.log(address(router));
-        console2.log("Hook (Pool)");    console2.log(hook);
-        console2.log("Predicted hook"); console2.log(predictedHook);
+        console2.log("Index");
+        console2.log(address(base));
+        console2.log("MarginManager");
+        console2.log(address(margin));
+        console2.log("IRSPoolFactory");
+        console2.log(address(factory));
+        console2.log("IRSLiquidityCaps");
+        console2.log(address(caps));
+        console2.log("IRSV4Router");
+        console2.log(address(router));
+        console2.log("Hook (Pool)");
+        console2.log(hook);
+        console2.log("Predicted hook");
+        console2.log(predictedHook);
 
-        console2.log("PoolId (bytes32)"); console2.logBytes32(PoolId.unwrap(id));
-        console2.log("PoolId (uint)");    console2.log(uint256(PoolId.unwrap(id)));
+        console2.log("PoolId (bytes32)");
+        console2.logBytes32(PoolId.unwrap(id));
+        console2.log("PoolId (uint)");
+        console2.log(uint256(PoolId.unwrap(id)));
     }
 }

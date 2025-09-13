@@ -27,10 +27,7 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
     }
 
     function _onlyAuthorized() internal view {
-        require(
-            msg.sender == owner() || msg.sender == controller,
-            "NotAuthorized"
-        );
+        require(msg.sender == owner() || msg.sender == controller, "NotAuthorized");
     }
 
     uint256 private constant ONE_PPM = 1_000_000; // parts-per-million
@@ -65,11 +62,7 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
 
     event SourceAdded(address indexed src);
     event SourceRemoved(address indexed src);
-    event ParamsUpdated(
-        uint256 alphaPPM,
-        uint256 maxDeviationPPM,
-        uint64 maxStale
-    );
+    event ParamsUpdated(uint256 alphaPPM, uint256 maxDeviationPPM, uint64 maxStale);
     event FreezeSet(bool frozen);
     event ManualRateSet(uint256 ratePerSecond, bool enabled);
     event VersionBumped(uint64 newVersion);
@@ -112,9 +105,7 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
     }
 
     /// @inheritdoc IEthBaseIndex
-    function setRatePerSecond(
-        uint256 newRatePerSecond
-    ) external override onlyOwner {
+    function setRatePerSecond(uint256 newRatePerSecond) external override onlyOwner {
         // This function acts as a *manual override* control.
         // - If you intend to enable manual, call setManualRate(newRatePerSecond, true).
         // - If you just want to update and keep current mode, we checkpoint and update the relevant field.
@@ -130,12 +121,7 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
     }
 
     /// @inheritdoc IEthBaseIndex
-    function cumulativeIndex()
-        external
-        view
-        override
-        returns (uint256 cum, uint64 tstamp)
-    {
+    function cumulativeIndex() external view override returns (uint256 cum, uint64 tstamp) {
         uint64 nowTs = uint64(block.timestamp);
         uint64 dt = nowTs - lastUpdate;
         cum = cumulative + ratePerSecondEffective() * dt;
@@ -175,11 +161,10 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
         emit VersionBumped(version);
     }
 
-    function setParams(
-        uint256 _alphaPPM,
-        uint256 _maxDeviationPPM,
-        uint64 _maxStale
-    ) external onlyAuthorized {
+    function setParams(uint256 _alphaPPM, uint256 _maxDeviationPPM, uint64 _maxStale)
+        external
+        onlyAuthorized
+    {
         require(_alphaPPM <= ONE_PPM && _maxDeviationPPM <= ONE_PPM, "ppm");
         alphaPPM = _alphaPPM;
         maxDeviationPPM = _maxDeviationPPM;
@@ -197,10 +182,7 @@ contract EthBaseIndex is IEthBaseIndex, Ownable {
         emit VersionBumped(version);
     }
 
-    function setManualRate(
-        uint256 newManualRatePerSecond,
-        bool enable
-    ) external onlyAuthorized {
+    function setManualRate(uint256 newManualRatePerSecond, bool enable) external onlyAuthorized {
         _checkpoint();
         manualRatePerSecond = newManualRatePerSecond;
         useManualRate = enable;

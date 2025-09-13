@@ -31,11 +31,7 @@ contract IRSLiquidityCaps is AccessControl {
         emit AllowedLP(lp, allowed);
     }
 
-    function canAdd(
-        address lp,
-        PoolId id,
-        int256 liquidityDelta
-    ) external returns (bool) {
+    function canAdd(address lp, PoolId id, int256 liquidityDelta) external returns (bool) {
         if (!ALLOWED_LP[lp]) return false;
         if (liquidityDelta <= 0) return true;
         uint128 add = uint128(uint256(liquidityDelta));

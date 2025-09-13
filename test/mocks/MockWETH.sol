@@ -7,7 +7,9 @@ contract MockWETH is ERC20("WETH", "WETH") {
     event Deposit(address indexed dst, uint256 wad);
     event Withdrawal(address indexed src, uint256 wad);
 
-    receive() external payable { deposit(); }
+    receive() external payable {
+        deposit();
+    }
 
     function deposit() public payable {
         _mint(msg.sender, msg.value);

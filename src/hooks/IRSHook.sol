@@ -9,7 +9,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {
+    BeforeSwapDelta, BeforeSwapDeltaLibrary
+} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 import {IEthBaseIndex} from "../interfaces/IEthBaseIndex.sol";
 import {IMarginManager} from "../interfaces/IMarginManager.sol";
@@ -19,7 +21,9 @@ import {IMarginManager} from "../interfaces/IMarginManager.sol";
 ///      Positions snapshot fundingGrowth on add/remove; funding owed can be collected post-accrual.
 contract IRSHook is IHooks {
     event FundingAccrued(PoolId indexed id, int256 growthX128Delta, uint32 dt);
-    event FundingOwedCleared(address indexed owner, PoolId indexed id, int24 lower, int24 upper, int256 amount);
+    event FundingOwedCleared(
+        address indexed owner, PoolId indexed id, int24 lower, int24 upper, int256 amount
+    );
 
     address public ROUTER;
 
@@ -27,6 +31,7 @@ contract IRSHook is IHooks {
     function setRouter(address r) external onlyFactory {
         ROUTER = r;
     }
+
     using PoolIdLibrary for PoolKey;
 
     // --- Immutables ---
@@ -50,8 +55,8 @@ contract IRSHook is IHooks {
     struct Position {
         uint128 liquidity; // last known liquidity for this position
         uint256 fundingGrowthSnapshotX128; // snapshot of global at last update
-    // fundingOwedToken1 is token1-denominated funding. +ve: user receives token1, -ve: user owes token1
-    int256 fundingOwedToken1;
+        // fundingOwedToken1 is token1-denominated funding. +ve: user receives token1, -ve: user owes token1
+        int256 fundingOwedToken1;
     }
 
     // pool state
@@ -60,6 +65,7 @@ contract IRSHook is IHooks {
     // positions keyed by (owner, ticks, salt, poolId)
     mapping(bytes32 => Position) public positions;
     // Minimal API to observe funding owed
+
     function fundingOwedToken1(
         address owner,
         PoolKey calldata key,
@@ -100,12 +106,12 @@ contract IRSHook is IHooks {
     }
 
     function getHookPermissions() external pure returns (Hooks.Permissions memory p) {
-        p.afterInitialize     = true;
-        p.beforeSwap          = true;
-        p.beforeAddLiquidity  = true;
-        p.afterAddLiquidity   = true;
+        p.afterInitialize = true;
+        p.beforeSwap = true;
+        p.beforeAddLiquidity = true;
+        p.afterAddLiquidity = true;
         p.beforeRemoveLiquidity = true;
-        p.afterRemoveLiquidity  = true;
+        p.afterRemoveLiquidity = true;
         return p;
     }
 
@@ -130,18 +136,16 @@ contract IRSHook is IHooks {
         }
     }
 
-    function _positionKey(
-        address owner,
-        PoolId id,
-        int24 tickLower,
-        int24 tickUpper,
-        bytes32 salt
-    ) internal pure returns (bytes32) {
+    function _positionKey(address owner, PoolId id, int24 tickLower, int24 tickUpper, bytes32 salt)
+        internal
+        pure
+        returns (bytes32)
+    {
         bytes32 idv = PoolId.unwrap(id);
         uint256 tl = uint256(int256(tickLower));
         uint256 tu = uint256(int256(tickUpper));
         bytes32 pkey;
-        assembly("memory-safe") {
+        assembly ("memory-safe") {
             let ptr := mload(0x40)
             mstore(ptr, owner)
             mstore(add(ptr, 0x20), idv)
@@ -257,20 +261,21 @@ contract IRSHook is IHooks {
 
     // ============ IHooks ============
 
-    function beforeInitialize(
-        address,
-        PoolKey calldata,
-        uint160
-    ) external pure override returns (bytes4) {
+    function beforeInitialize(address, PoolKey calldata, uint160)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
         return IHooks.beforeInitialize.selector;
     }
 
-    function afterInitialize(
-        address,
-        PoolKey calldata,
-        uint160,
-        int24
-    ) external view override returns (bytes4) {
+    function afterInitialize(address, PoolKey calldata, uint160, int24)
+        external
+        view
+        override
+        returns (bytes4)
+    {
         require(msg.sender == address(MANAGER), "NotManager");
         return IHooks.afterInitialize.selector;
     }
@@ -281,18 +286,12 @@ contract IRSHook is IHooks {
         ModifyLiquidityParams calldata params,
         bytes calldata
     ) external override returns (bytes4) {
-    require(msg.sender == address(MANAGER), "NotManager");
-    PoolId id = key.toId();
-    // update funding and frozen flag from index before gating
-    _accrue(id);
-    require(!poolMeta[id].frozen, "PoolMatured");
-        _updatePositionOwed(
-            sender,
-            id,
-            params.tickLower,
-            params.tickUpper,
-            params.salt
-        );
+        require(msg.sender == address(MANAGER), "NotManager");
+        PoolId id = key.toId();
+        // update funding and frozen flag from index before gating
+        _accrue(id);
+        require(!poolMeta[id].frozen, "PoolMatured");
+        _updatePositionOwed(sender, id, params.tickLower, params.tickUpper, params.salt);
         // we apply delta in afterAddLiquidity when liquidity is actually adjusted
         return IHooks.beforeAddLiquidity.selector;
     }
@@ -309,17 +308,9 @@ contract IRSHook is IHooks {
         PoolId id = key.toId();
         // apply positive or zero delta
         _applyLiquidityDelta(
-            sender,
-            id,
-            params.tickLower,
-            params.tickUpper,
-            params.salt,
-            params.liquidityDelta
+            sender, id, params.tickLower, params.tickUpper, params.salt, params.liquidityDelta
         );
-        return (
-            IHooks.afterAddLiquidity.selector,
-            BalanceDeltaLibrary.ZERO_DELTA
-        );
+        return (IHooks.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
     function beforeRemoveLiquidity(
@@ -331,13 +322,7 @@ contract IRSHook is IHooks {
         require(msg.sender == address(MANAGER), "NotManager");
         PoolId id = key.toId();
         _accrue(id);
-        _updatePositionOwed(
-            sender,
-            id,
-            params.tickLower,
-            params.tickUpper,
-            params.salt
-        );
+        _updatePositionOwed(sender, id, params.tickLower, params.tickUpper, params.salt);
         // delta applied in afterRemove
         return IHooks.beforeRemoveLiquidity.selector;
     }
@@ -354,63 +339,51 @@ contract IRSHook is IHooks {
         PoolId id = key.toId();
         // apply negative or zero delta
         _applyLiquidityDelta(
-            sender,
-            id,
-            params.tickLower,
-            params.tickUpper,
-            params.salt,
-            params.liquidityDelta
+            sender, id, params.tickLower, params.tickUpper, params.salt, params.liquidityDelta
         );
-        return (
-            IHooks.afterRemoveLiquidity.selector,
-            BalanceDeltaLibrary.ZERO_DELTA
-        );
+        return (IHooks.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
-    function beforeSwap(
-        address sender,
-        PoolKey calldata key,
-        SwapParams calldata,
-        bytes calldata
-    ) external override returns (bytes4, BeforeSwapDelta, uint24) {
+    function beforeSwap(address sender, PoolKey calldata key, SwapParams calldata, bytes calldata)
+        external
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
         require(msg.sender == address(MANAGER), "NotManager");
         require(MARGIN.isHealthy(sender), "MarginNotHealthy");
 
         PoolId id = key.toId();
-    // accrue first to update frozen flag if maturity passed, then gate
-    _accrue(id);
-    require(!poolMeta[id].frozen, "PoolMatured");
+        // accrue first to update frozen flag if maturity passed, then gate
+        _accrue(id);
+        require(!poolMeta[id].frozen, "PoolMatured");
 
-    return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
-    function afterSwap(
-        address,
-        PoolKey calldata,
-        SwapParams calldata,
-        BalanceDelta,
-        bytes calldata
-    ) external pure override returns (bytes4, int128) {
+    function afterSwap(address, PoolKey calldata, SwapParams calldata, BalanceDelta, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4, int128)
+    {
         return (IHooks.afterSwap.selector, int128(0));
     }
 
-    function beforeDonate(
-        address,
-        PoolKey calldata,
-        uint256,
-        uint256,
-        bytes calldata
-    ) external pure override returns (bytes4) {
+    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
         return IHooks.beforeDonate.selector;
     }
 
-    function afterDonate(
-        address,
-        PoolKey calldata,
-        uint256,
-        uint256,
-        bytes calldata
-    ) external pure override returns (bytes4) {
+    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
         return IHooks.afterDonate.selector;
     }
 }

@@ -26,17 +26,14 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         MANAGER.settle();
     }
 
-    function _collectAsEthIfWeth(
-        Currency currency,
-        address to,
-        uint256 amount,
-        bool unwrapWeth
-    ) internal {
+    function _collectAsEthIfWeth(Currency currency, address to, uint256 amount, bool unwrapWeth)
+        internal
+    {
         if (amount == 0) return;
         if (unwrapWeth && Currency.unwrap(currency) == address(WETH)) {
             MANAGER.take(currency, address(this), amount);
             WETH.withdraw(amount);
-            (bool ok, ) = payable(to).call{value: amount}("");
+            (bool ok,) = payable(to).call{value: amount}("");
             require(ok, "ETHSendFail");
         } else {
             MANAGER.take(currency, to, amount);
@@ -45,11 +42,7 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
 
     // Funding settlement events
     event FundingSettled(
-        address indexed owner,
-        PoolKey key,
-        int24 lower,
-        int24 upper,
-        int256 amountToken1
+        address indexed owner, PoolKey key, int24 lower, int24 upper, int256 amountToken1
     );
     event TokensPaid(
         address indexed from,
@@ -59,10 +52,7 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         uint256 amount
     );
     event TokensCollected(
-        address indexed to,
-        address indexed manager,
-        address currency,
-        uint256 amount
+        address indexed to, address indexed manager, address currency, uint256 amount
     );
     event RefundIssued(address indexed to, address currency, uint256 amount);
 
@@ -76,13 +66,8 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         address recipient
     ) external nonReentrant whenNotPaused {
         // Assume hook is set as a public variable (IIRSHook)
-        int256 amt = IIRSHook(address(key.hooks)).clearFundingOwedToken1(
-            owner,
-            key,
-            lower,
-            upper,
-            salt
-        );
+        int256 amt =
+            IIRSHook(address(key.hooks)).clearFundingOwedToken1(owner, key, lower, upper, salt);
         if (amt > 0) {
             // protocol owes owner token1
             _collect(key.currency1, recipient, uint256(amt));
@@ -104,25 +89,12 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
     IRSLiquidityCaps public immutable CAPS;
 
     event AddLiquidity(
-        address indexed lp,
-        PoolId indexed id,
-        int24 lower,
-        int24 upper,
-        int256 liquidityDelta
+        address indexed lp, PoolId indexed id, int24 lower, int24 upper, int256 liquidityDelta
     );
     event RemoveLiquidity(
-        address indexed lp,
-        PoolId indexed id,
-        int24 lower,
-        int24 upper,
-        int256 liquidityDelta
+        address indexed lp, PoolId indexed id, int24 lower, int24 upper, int256 liquidityDelta
     );
-    event Swap(
-        address indexed trader,
-        PoolId indexed id,
-        bool zeroForOne,
-        int256 amountSpecified
-    );
+    event Swap(address indexed trader, PoolId indexed id, bool zeroForOne, int256 amountSpecified);
     event Rollover(address indexed lp, PoolId fromId, PoolId toId, uint128 qty);
 
     // governance pause gates
@@ -134,20 +106,15 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         _unpause();
     }
 
-    constructor(
-        IPoolManager _manager,
-        IWETH9 _weth,
-        IRSLiquidityCaps _caps,
-        address admin
-    ) Ownable(admin) {
+    constructor(IPoolManager _manager, IWETH9 _weth, IRSLiquidityCaps _caps, address admin)
+        Ownable(admin)
+    {
         MANAGER = _manager;
         WETH = _weth;
         CAPS = _caps;
     }
 
-    function multicall(
-        bytes[] calldata data
-    ) external payable returns (bytes[] memory results) {
+    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results) {
         results = new bytes[](data.length);
         for (uint256 i = 0; i < data.length; i++) {
             (bool ok, bytes memory ret) = address(this).delegatecall(data[i]);
@@ -179,22 +146,17 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         bool useNative1;
     }
 
-    function addLiquidity(
-        AddLiq calldata a
-    )
+    function addLiquidity(AddLiq calldata a)
         external
         payable
         whenNotPaused
         returns (BalanceDelta callerDelta, BalanceDelta feesAccrued)
     {
         // caps check (per-pool cap + allowlist)
-        require(
-            CAPS.canAdd(msg.sender, a.key.toId(), a.params.liquidityDelta),
-            "CAPS"
-        );
+        require(CAPS.canAdd(msg.sender, a.key.toId(), a.params.liquidityDelta), "CAPS");
 
-    bytes memory ret = MANAGER.unlock(abi.encode(keccak256("ADD_LIQ"), msg.sender, a));
-    (callerDelta, feesAccrued) = abi.decode(ret, (BalanceDelta, BalanceDelta));
+        bytes memory ret = MANAGER.unlock(abi.encode(keccak256("ADD_LIQ"), msg.sender, a));
+        (callerDelta, feesAccrued) = abi.decode(ret, (BalanceDelta, BalanceDelta));
 
         emit AddLiquidity(
             msg.sender,
@@ -212,9 +174,7 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         address to;
     }
 
-    function removeLiquidity(
-        RemoveLiq calldata r
-    )
+    function removeLiquidity(RemoveLiq calldata r)
         external
         whenNotPaused
         returns (BalanceDelta callerDelta, BalanceDelta feesAccrued)
@@ -238,22 +198,15 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         bool useNative; // if paying native on input side
     }
 
-    function swap(
-        SwapEx calldata s
-    )
+    function swap(SwapEx calldata s)
         external
         payable
         whenNotPaused
         returns (BalanceDelta swapDelta)
     {
-    bytes memory ret = MANAGER.unlock(abi.encode(keccak256("SWAP"), msg.sender, s));
-    swapDelta = abi.decode(ret, (BalanceDelta));
-        emit Swap(
-            msg.sender,
-            s.key.toId(),
-            s.params.zeroForOne,
-            s.params.amountSpecified
-        );
+        bytes memory ret = MANAGER.unlock(abi.encode(keccak256("SWAP"), msg.sender, s));
+        swapDelta = abi.decode(ret, (BalanceDelta));
+        emit Swap(msg.sender, s.key.toId(), s.params.zeroForOne, s.params.amountSpecified);
     }
 
     struct RolloverParams {
@@ -263,27 +216,13 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         ModifyLiquidityParams addParams; // positive delta
     }
 
-    function rollover(
-        RolloverParams calldata r
-    ) external whenNotPaused {
+    function rollover(RolloverParams calldata r) external whenNotPaused {
         // remove
         MANAGER.unlock(
-            abi.encode(
-                keccak256("REM_LIQ"),
-                msg.sender,
-                r.fromKey,
-                r.removeParams,
-                bytes("")
-            )
+            abi.encode(keccak256("REM_LIQ"), msg.sender, r.fromKey, r.removeParams, bytes(""))
         );
         MANAGER.unlock(
-            abi.encode(
-                keccak256("ADD_LIQ"),
-                msg.sender,
-                r.toKey,
-                r.addParams,
-                bytes("")
-            )
+            abi.encode(keccak256("ADD_LIQ"), msg.sender, r.toKey, r.addParams, bytes(""))
         );
         emit Rollover(
             msg.sender,
@@ -294,9 +233,7 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
     }
 
     /// @dev Called by PoolManager inside unlock() with our data; we execute the actual op.
-    function unlockCallback(
-        bytes calldata data
-    ) external nonReentrant returns (bytes memory) {
+    function unlockCallback(bytes calldata data) external nonReentrant returns (bytes memory) {
         require(msg.sender == address(MANAGER), "NOT_PM");
 
         // Data format: abi.encode(opHash, sender, opStruct)
@@ -306,13 +243,10 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         if (opHash == keccak256("ADD_LIQ")) {
             address sender;
             AddLiq memory a;
-            (/*op*/, sender, a) = abi.decode(data, (bytes32, address, AddLiq));
+            ( /*op*/ , sender, a) = abi.decode(data, (bytes32, address, AddLiq));
 
-            (BalanceDelta cd, BalanceDelta fa) = MANAGER.modifyLiquidity(
-                a.key,
-                a.params,
-                a.hookData
-            );
+            (BalanceDelta cd, BalanceDelta fa) =
+                MANAGER.modifyLiquidity(a.key, a.params, a.hookData);
 
             // combine caller delta and fees accrued for settlement decisions
             BalanceDelta sum = cd + fa;
@@ -341,13 +275,10 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         if (opHash == keccak256("REM_LIQ")) {
             address sender;
             RemoveLiq memory r;
-            (/*op*/, sender, r) = abi.decode(data, (bytes32, address, RemoveLiq));
+            ( /*op*/ , sender, r) = abi.decode(data, (bytes32, address, RemoveLiq));
 
-            (BalanceDelta cd, BalanceDelta fa) = MANAGER.modifyLiquidity(
-                r.key,
-                r.params,
-                r.hookData
-            );
+            (BalanceDelta cd, BalanceDelta fa) =
+                MANAGER.modifyLiquidity(r.key, r.params, r.hookData);
 
             BalanceDelta sumRem = cd + fa;
             int128 ra0 = sumRem.amount0();
@@ -362,7 +293,7 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         if (opHash == keccak256("SWAP")) {
             address sender;
             SwapEx memory s;
-            (/*op*/, sender, s) = abi.decode(data, (bytes32, address, SwapEx));
+            ( /*op*/ , sender, s) = abi.decode(data, (bytes32, address, SwapEx));
 
             BalanceDelta sd = MANAGER.swap(s.key, s.params, s.hookData);
 
@@ -389,12 +320,7 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         revert("BAD_OP");
     }
 
-    function _prefund(
-        Currency cur,
-        address from,
-        uint256 amount,
-        bool useNative
-    ) internal {
+    function _prefund(Currency cur, address from, uint256 amount, bool useNative) internal {
         if (amount == 0) return;
         if (Currency.unwrap(cur) == address(0)) {
             require(useNative, "NATIVE_FLAG");
@@ -413,21 +339,11 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
         MANAGER.sync(currency);
         if (Currency.unwrap(currency) == address(0)) {
             MANAGER.settle{value: amount}();
-            emit TokensPaid(
-                from,
-                from,
-                address(MANAGER),
-                Currency.unwrap(currency),
-                amount
-            );
-        } else if (
-            Currency.unwrap(currency) == address(WETH) && msg.value >= amount
-        ) {
+            emit TokensPaid(from, from, address(MANAGER), Currency.unwrap(currency), amount);
+        } else if (Currency.unwrap(currency) == address(WETH) && msg.value >= amount) {
             _payWethWithEth(amount);
             if (msg.value > amount) {
-                (bool ok, ) = payable(from).call{value: (msg.value - amount)}(
-                    ""
-                );
+                (bool ok,) = payable(from).call{value: (msg.value - amount)}("");
                 require(ok, "RefundFail");
                 emit RefundIssued(from, address(WETH), msg.value - amount);
             }
@@ -442,15 +358,14 @@ contract IRSV4Router is IUnlockCallback, ReentrancyGuard, Pausable, Ownable {
     function _collect(Currency currency, address to, uint256 amount) internal {
         if (amount == 0) return;
         MANAGER.take(currency, to, amount);
-        address what = Currency.unwrap(currency) == address(0)
-            ? address(0)
-            : Currency.unwrap(currency);
+        address what =
+            Currency.unwrap(currency) == address(0) ? address(0) : Currency.unwrap(currency);
         emit TokensCollected(to, address(MANAGER), what, amount);
     }
 
     function unwrapWETH(address to, uint256 amount) external onlyOwner {
         WETH.withdraw(amount);
-        (bool ok, ) = to.call{value: amount}("");
+        (bool ok,) = to.call{value: amount}("");
         require(ok, "SEND_FAIL");
     }
 

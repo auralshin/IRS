@@ -23,11 +23,18 @@ contract MockIRSHookStrict {
 
     error NotRouter();
 
-    function setRouter(address r) external { router = r; }
-    function setOwed(bytes32 k, int256 v) external { owed[k] = v; }
+    function setRouter(address r) external {
+        router = r;
+    }
+
+    function setOwed(bytes32 k, int256 v) external {
+        owed[k] = v;
+    }
 
     function keyOf(address owner, PoolKey calldata key, int24 l, int24 u, bytes32 salt)
-        public pure returns (bytes32)
+        public
+        pure
+        returns (bytes32)
     {
         return keccak256(abi.encode(owner, key.currency0, key.currency1, l, u, salt));
     }
@@ -54,19 +61,20 @@ contract Funding_Settlement_Fuzz is Test {
     IRSV4Router router;
 
     address owner = address(0xABCD);
-    address recv  = address(0xAABB);
+    address recv = address(0xAABB);
 
     PoolKey key;
     bytes32 salt = bytes32(uint256(0x1234));
 
     function setUp() public {
         manager = new ManagerHarness();
-        token0  = new MockERC20("T0","T0");
-        token1  = new MockERC20("T1","T1");
-        hook    = new MockIRSHookStrict();
+        token0 = new MockERC20("T0", "T0");
+        token1 = new MockERC20("T1", "T1");
+        hook = new MockIRSHookStrict();
 
-    IRSLiquidityCaps caps = new IRSLiquidityCaps(address(this));
-    router = new IRSV4Router(IPoolManager(address(manager)), IWETH9(address(0)), caps, address(this));
+        IRSLiquidityCaps caps = new IRSLiquidityCaps(address(this));
+        router =
+            new IRSV4Router(IPoolManager(address(manager)), IWETH9(address(0)), caps, address(this));
         hook.setRouter(address(router));
 
         // Manager can pay positive funding
@@ -99,9 +107,9 @@ contract Funding_Settlement_Fuzz is Test {
     }
 
     function test_fuzz_settleFunding_positive(int64 raw) public {
-    int64 r = raw % 1000;
-    if (r < 0) r = -r;
-    int256 v = int256(uint256(uint64(r))) * 1e18; // [0..999] ETH
+        int64 r = raw % 1000;
+        if (r < 0) r = -r;
+        int256 v = int256(uint256(uint64(r))) * 1e18; // [0..999] ETH
         _setOwed(v);
 
         uint256 before = IERC20(address(token1)).balanceOf(recv);
@@ -116,9 +124,9 @@ contract Funding_Settlement_Fuzz is Test {
     }
 
     function test_fuzz_settleFunding_negative(int64 raw) public {
-    int64 r = raw % 1000;
-    if (r < 0) r = -r;
-    int256 v = -int256(uint256(uint64(r) + 1) * 1e18); // [-1..-1000] ETH
+        int64 r = raw % 1000;
+        if (r < 0) r = -r;
+        int256 v = -int256(uint256(uint64(r) + 1) * 1e18); // [-1..-1000] ETH
         _setOwed(v);
 
         uint256 mBefore = IERC20(address(token1)).balanceOf(address(manager));
@@ -128,7 +136,11 @@ contract Funding_Settlement_Fuzz is Test {
         vm.stopPrank();
 
         // Manager received |v|
-        assertEq(IERC20(address(token1)).balanceOf(address(manager)) - mBefore, uint256(-v), "negative funding pulled");
+        assertEq(
+            IERC20(address(token1)).balanceOf(address(manager)) - mBefore,
+            uint256(-v),
+            "negative funding pulled"
+        );
 
         // owed reset to 0
         bytes32 k = hook.keyOf(owner, key, -60, 60, salt);

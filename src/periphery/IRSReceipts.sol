@@ -40,21 +40,11 @@ contract IRSReceipts is ERC721, Ownable, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     // ---- events ----
-    event Minted(
-        uint256 tokenId,
-        address owner,
-        PoolId id,
-        int24 lower,
-        int24 upper,
-        bytes32 salt
-    );
+    event Minted(uint256 tokenId, address owner, PoolId id, int24 lower, int24 upper, bytes32 salt);
     event Redeemed(uint256 tokenId, int256 funding, address to);
     event RouterUpdated(address indexed oldRouter, address indexed newRouter);
 
-    constructor(
-        address admin,
-        address router
-    ) ERC721("IRS Position", "IRSP") Ownable(admin) {
+    constructor(address admin, address router) ERC721("IRS Position", "IRSP") Ownable(admin) {
         ROUTER = router;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         // Optionally grant MINTER_ROLE to the router now; you can revoke/change later.
@@ -97,26 +87,21 @@ contract IRSReceipts is ERC721, Ownable, AccessControl {
     function redeem(uint256 tokenId, PoolKey calldata key) external {
         require(ownerOf(tokenId) == msg.sender, "NOT_OWNER");
         PositionInfo memory p = positionOf[tokenId];
-        require(
-            PoolId.unwrap(p.id) == PoolId.unwrap(key.toId()),
-            "POOL_MISMATCH"
-        );
+        require(PoolId.unwrap(p.id) == PoolId.unwrap(key.toId()), "POOL_MISMATCH");
 
         IRSV4RouterMinimal(ROUTER).settleFundingToken1(
-            key,
-            p.tickLower,
-            p.tickUpper,
-            p.salt,
-            msg.sender,
-            msg.sender
+            key, p.tickLower, p.tickUpper, p.salt, msg.sender, msg.sender
         );
 
         emit Redeemed(tokenId, 0, msg.sender);
     }
 
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override(ERC721, AccessControl) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721, AccessControl)
+        returns (bool)
+    {
         return super.supportsInterface(interfaceId);
     }
 }
