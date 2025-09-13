@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
+import {IEthBaseIndex} from "../interfaces/IEthBaseIndex.sol";
+import {IMarginManager} from "../interfaces/IMarginManager.sol";
+import {IRSHook} from "../hooks/IRSHook.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+
+contract IRSPoolFactory {
+    using PoolIdLibrary for PoolKey;
+
+    IPoolManager public immutable MANAGER;
+    address public immutable THIS_FACTORY = address(this);
+
+    event PoolCreated(PoolId poolId, address hook, uint64 maturity);
+
+    constructor(IPoolManager _manager) {
+        MANAGER = _manager;
+    }
+
+    function createPool(
+        Currency currency0,
+        Currency currency1,
+        uint24 fee,
+        int24 tickSpacing,
+        uint160 sqrtPriceX96,
+        uint64 maturityTs,
+        IEthBaseIndex baseIndex,
+        IMarginManager marginManager
+    ) external returns (PoolId id, address hookAddr) {
+        uint160 flags = Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG;
+
+        bytes memory ctorArgs = abi.encode(
+            MANAGER,
+            baseIndex,
+            marginManager,
+            address(this)
+        );
+
+        (address expectedHook, bytes32 salt) = HookMiner.find(
+            address(this), // deployer
+            flags, // desired low 14 bits
+            type(IRSHook).creationCode,
+            ctorArgs
+        );
+
+        hookAddr = address(
+            new IRSHook{salt: salt}(
+                MANAGER,
+                baseIndex,
+                marginManager,
+                address(this)
+            )
+        );
+        require(hookAddr == expectedHook, "HookAddrMismatch");
+
+        PoolKey memory key = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(hookAddr)
+        });
+
+        MANAGER.initialize(key, sqrtPriceX96);
+
+        id = key.toId();
+        IRSHook(hookAddr).setMaturity(id, maturityTs);
+
+        emit PoolCreated(id, hookAddr, maturityTs);
+    }
+}
