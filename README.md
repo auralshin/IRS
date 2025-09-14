@@ -1,4 +1,4 @@
-# Interest Rate Swap (Hook) on Uniswap v4
+# Interest Rate Swap (Hook) on Uniswap v4 [In Development]
 
 This project is a prototype **Interest Rate Swap (IRS)** protocol built using **Uniswap v4 hooks**.  
 The system enables traders to take **fixed vs. floating exposure** on an index (e.g. ETH base rate).  
